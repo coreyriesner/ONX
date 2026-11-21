@@ -190,6 +190,7 @@ input[type=range]{width:100%}
     <div class="bm" id="bmGrid"></div>
     <div class="row"><label><input type="checkbox" id="ovLabels" checked> Road &amp; place labels</label></div>
     <div class="row"><label><input type="checkbox" id="ovHill"> Terrain shading</label></div>
+    <div class="row"><label><input type="checkbox" id="ovContours"> Contour lines (topo)</label></div>
     <h4>Property lines</h4>
     <div class="row"><label><input type="checkbox" id="lyParcels" checked><span class="sw" id="parcelSw" style="border-color:#ffd400"></span> Parcel lines</label>
       <select id="parcelColor" style="width:auto;padding:4px"><option value="#ffd400">Yellow</option><option value="#ff3b30">Red</option><option value="#00e5ff">Cyan</option><option value="#ffffff">White</option><option value="#ff00ff">Magenta</option></select></div>
@@ -303,7 +304,7 @@ map.createPane('hill');map.getPane('hill').style.zIndex=210;
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/';
 const BASEMAPS={
   hybrid:{name:'Satellite',mk:()=>L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'})},
-  usgsimg:{name:'Sat + Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
+  usgsimg:{name:'Sat + Topo',mk:()=>L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'}),contours:true},
   topo:{name:'USGS Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
   otm:{name:'OpenTopo',mk:()=>L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{crossOrigin:true,maxZoom:20,maxNativeZoom:17,subdomains:'abc',attribution:'© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors'})},
   esritopo:{name:'Esri Topo',mk:()=>L.tileLayer(ESRI+'World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'© Esri'})},
@@ -315,12 +316,25 @@ const labelLayers=L.layerGroup([
   L.tileLayer(ESRI+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,pane:'labels'})
 ]);
 const hillLayer=L.tileLayer(ESRI+'Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,pane:'hill',opacity:.55,attribution:'Hillshade © Esri'});
+// USGS contours drawn by the server, brightened so they read on imagery
+map.createPane('contour');map.getPane('contour').style.zIndex=250;map.getPane('contour').style.pointerEvents='none';
+const contourLayer=L.esri.dynamicMapLayer({url:'https://carto.nationalmap.gov/arcgis/rest/services/contours/MapServer',f:'image',format:'png32',transparent:true,pane:'contour',updateInterval:400,
+  layers:[2,11,13,16,18,24,25,26,27,32,33,34,35],attribution:'Contours: USGS'});
+$('#ovContours').checked=store.get('contours',false);
+function syncContours(){
+  const imagery=curBase==='hybrid'||curBase==='usgsimg';
+  map.getPane('contour').style.filter=imagery?'brightness(2.6) saturate(1.4) contrast(1.2)':'';
+  const on=(BASEMAPS[curBase]&&BASEMAPS[curBase].contours)||$('#ovContours').checked;
+  if(on&&map.getZoom()>=11){if(!map.hasLayer(contourLayer))contourLayer.addTo(map)}else if(map.hasLayer(contourLayer))map.removeLayer(contourLayer);
+}
+$('#ovContours').addEventListener('change',e=>{store.set('contours',e.target.checked);syncContours()});
 function setBase(k){
   if(!BASEMAPS[k])k='hybrid';
   if(baseLayer)map.removeLayer(baseLayer);
   baseLayer=BASEMAPS[k].mk().addTo(map);baseLayer.bringToBack();curBase=k;store.set('base',k);
   document.querySelectorAll('#bmGrid button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
-  const wantLabels=$('#ovLabels').checked&&(k==='hybrid');
+  const wantLabels=$('#ovLabels').checked&&(k==='hybrid'||k==='usgsimg');
+  syncContours();
   if(wantLabels)labelLayers.addTo(map);else map.removeLayer(labelLayers);
 }
 $('#bmGrid').innerHTML=Object.entries(BASEMAPS).map(([k,v])=>`<button data-k="${k}">${v.name}</button>`).join('');
@@ -403,7 +417,7 @@ document.querySelectorAll('[data-ly]').forEach(cb=>cb.addEventListener('change',
 $('#pubOpacity').addEventListener('input',e=>{pubOpacity=+e.target.value;store.set('pubOp',pubOpacity);
   ALL.forEach(d=>{const l=lyr[d.id];if(!l)return;if(d.fws)l.setStyle({opacity:pubOpacity,fillOpacity:.45*pubOpacity});else l.setOpacity(pubOpacity)})});
 
-map.on('zoomend',()=>{syncParcels();syncPub()});
+map.on('zoomend',()=>{syncParcels();syncPub();syncContours()});
 
 /* ---------- legend & public-only view ---------- */
 map.createPane('dim');map.getPane('dim').style.zIndex=300;map.getPane('dim').style.pointerEvents='none';
