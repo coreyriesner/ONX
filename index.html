@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Northwoods Hunt Map – Minnesota</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="theme-color" content="#15191d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hunt Map">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+<style>
+:root{--bg:#15191d;--panel:#1e2329;--line:#2e353d;--txt:#e9edf1;--mut:#9aa6b2;--acc:#f5a623;--acc2:#ffd400;--ok:#4caf50;--bad:#e5533d}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+#map{position:absolute;inset:0;background:#0d1013}
+.leaflet-container{font:inherit}
+button{font:inherit;color:inherit;cursor:pointer}
+/* top bar */
+#top{position:absolute;z-index:1000;top:calc(10px + env(safe-area-inset-top));left:10px;right:10px;display:flex;gap:8px;pointer-events:none}
+#top>*{pointer-events:auto}
+#brand{order:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:0 12px;display:flex;align-items:center;font-weight:700;letter-spacing:.3px;white-space:nowrap}
+#brand b{color:var(--acc);margin-right:4px}
+#wxChip{order:3}#searchWrap{order:2;flex:1;max-width:520px;position:relative}
+#search{width:100%;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:0 40px 0 12px;font-size:15px;outline:none}
+#search:focus{border-color:var(--acc)}
+#searchMode{position:absolute;right:6px;top:6px;height:30px;border:0;border-radius:7px;background:#2a3038;color:var(--mut);font-size:12px;padding:0 8px}
+#results{position:absolute;top:46px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:50vh;overflow:auto;display:none}
+#results div{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+#results div:hover{background:#262c33}
+#results small{color:var(--mut);display:block}
+/* side buttons */
+#side{position:absolute;z-index:1000;right:10px;top:calc(64px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
+.fab{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:20px}
+.fab.on{background:var(--acc);color:#111;border-color:var(--acc)}
+/* bottom toolbar */
+#tools{position:absolute;z-index:1000;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px}
+#tools button{border:0;background:transparent;border-radius:10px;padding:6px 10px;min-width:64px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--mut)}
+#tools button span{font-size:20px;line-height:1}
+#tools button.on{background:var(--acc);color:#111}
+/* coords */
+#coords{position:absolute;z-index:999;left:10px;bottom:calc(80px + env(safe-area-inset-bottom));background:rgba(21,25,29,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font:12px ui-monospace,Menlo,Consolas,monospace;cursor:pointer}
+#cross{position:absolute;z-index:500;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;opacity:.7}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px #000}
+#cross:before{left:10px;top:0;width:2px;height:22px}#cross:after{top:10px;left:0;height:2px;width:22px}
+#legend{position:absolute;z-index:999;left:10px;bottom:calc(112px + env(safe-area-inset-bottom));background:rgba(21,25,29,.92);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;max-width:240px}
+#legend .seg{display:flex;gap:4px;margin-bottom:6px}
+#legend .seg button{flex:1;border:1px solid var(--line);background:#252b32;border-radius:7px;padding:5px 6px;font-size:12px}
+#legend .seg button.on{background:var(--acc);border-color:var(--acc);color:#111;font-weight:700}
+#legend .li{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer}
+#legend .li.off{opacity:.35;text-decoration:line-through}
+#legend .li .sw{width:16px;height:12px}
+#legendToggle{position:absolute;z-index:999;left:10px;bottom:calc(112px + env(safe-area-inset-bottom));display:none}
+@media (max-width:640px){#legend{max-width:200px;font-size:11px}}
+#zoomMsg{position:absolute;z-index:999;left:50%;transform:translateX(-50%);top:calc(62px + env(safe-area-inset-top));background:rgba(21,25,29,.9);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--mut);display:none}
+/* panels */
+.panel{position:absolute;z-index:1100;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.5);display:none;overflow:hidden;flex-direction:column}
+.panel.show{display:flex}
+.panel header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700}
+.panel header button{border:0;background:transparent;font-size:20px;color:var(--mut)}
+.panel .body{overflow:auto;padding:10px 14px}
+#layersPanel{right:62px;top:calc(64px + env(safe-area-inset-top));width:330px;max-height:calc(100% - 170px)}
+#listPanel{right:62px;top:calc(64px + env(safe-area-inset-top));width:330px;max-height:calc(100% - 170px)}
+#infoPanel{left:10px;top:calc(62px + env(safe-area-inset-top));width:360px;max-height:calc(100% - 170px)}
+#measurePanel{left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 20px))}
+#wxPanel{right:62px;top:calc(64px + env(safe-area-inset-top));width:360px;max-height:calc(100% - 170px)}
+@media (max-width:640px){#wxPanel{left:8px;right:8px;width:auto;top:auto;bottom:calc(84px + env(safe-area-inset-bottom));max-height:62vh}}
+#wxChip{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel);padding:0 10px;display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600}
+#wxChip .arr{display:inline-block;font-size:16px;color:#7fd3ff}
+.wxNow{display:flex;align-items:center;gap:12px}
+.wxNow .t{font-size:38px;font-weight:800;line-height:1}
+.wxGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wxCard{background:#252b32;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.wxCard .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
+.wxCard .v{font-size:16px;font-weight:700;margin-top:2px}
+.wxCard .s{font-size:12px;color:var(--mut)}
+.windBig{display:flex;align-items:center;gap:10px}
+.windBig .dial{width:54px;height:54px;border-radius:50%;border:2px solid #3a434d;position:relative;flex:none;font-size:9px;color:var(--mut)}
+.windBig .dial b{position:absolute;font-weight:600}
+.windBig .dial .ar{position:absolute;left:50%;top:50%;width:0;height:0;font-size:26px;color:#7fd3ff}
+.windBig .dial .ar span{position:absolute;left:-9px;top:-17px;display:block}
+.hours{display:flex;gap:6px;overflow-x:auto;padding:4px 0 6px}
+.hours .h{flex:none;width:58px;text-align:center;background:#252b32;border:1px solid var(--line);border-radius:8px;padding:6px 2px;font-size:11px}
+.hours .h b{display:block;font-size:14px;margin:2px 0}
+.hours .h.dawn{border-color:var(--acc)}
+.days .d{display:grid;grid-template-columns:44px 28px 1fr 70px 70px;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.days .d small{color:var(--mut)}
+#wptPanel{left:50%;transform:translateX(-50%);top:calc(62px + env(safe-area-inset-top));width:min(380px,calc(100% - 20px))}
+@media (max-width:640px){
+ #brand{display:none}
+ #layersPanel,#listPanel,#infoPanel{left:8px;right:8px;width:auto;top:auto;bottom:calc(84px + env(safe-area-inset-bottom));max-height:58vh}
+ #tools button{min-width:54px;padding:6px 6px}
+}
+h4{margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut)}
+h4:first-child{margin-top:2px}
+.row{display:flex;align-items:center;gap:8px;padding:5px 0}
+.row label{flex:1;display:flex;align-items:center;gap:8px;cursor:pointer}
+.sw{width:18px;height:14px;border-radius:3px;flex:none;border:2px solid}
+.bm{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.bm button{border:1px solid var(--line);background:#252b32;border-radius:8px;padding:8px 4px;font-size:12px}
+.bm button.on{border-color:var(--acc);color:var(--acc)}
+.note{font-size:12px;color:var(--mut);margin:6px 0}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:3px 10px;font-size:13px}
+.kv div:nth-child(odd){color:var(--mut)}
+.owner{font-size:18px;font-weight:700;margin:2px 0 2px}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:10px;margin:2px 4px 2px 0;border:1px solid}
+.btn{border:1px solid var(--line);background:#2a3038;border-radius:8px;padding:7px 11px;font-size:13px}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#111;font-weight:600}
+.btn.dng{color:var(--bad)}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.big{font-size:26px;font-weight:800;color:var(--acc2)}
+.sub{color:var(--mut);font-size:12px}
+input[type=text],textarea,select{width:100%;background:#12161a;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;font:inherit}
+textarea{min-height:60px;resize:vertical}
+.types{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+.types button{border:1px solid var(--line);background:#252b32;border-radius:8px;padding:6px 2px;font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.types button span{font-size:20px}
+.types button.on{border-color:var(--acc);background:#3a2f1a}
+.item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.item .ic{font-size:20px;width:28px;text-align:center}
+.item .t{flex:1;min-width:0}.item .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item .t small{color:var(--mut)}
+.wpt{width:32px;height:32px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.6)}
+.wpt span{transform:rotate(45deg);font-size:16px}
+.wlabel{background:rgba(0,0,0,.7)!important;color:#fff!important;border:0!important;box-shadow:none!important;font-size:11px;font-weight:600;padding:1px 5px!important}
+.wlabel:before{display:none}
+.mlabel{background:rgba(0,0,0,.75)!important;color:var(--acc2)!important;border:0!important;font-weight:700;font-size:12px}
+.vtx{width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--acc2);margin:-6px 0 0 -6px}
+.me{width:18px;height:18px;border-radius:50%;background:#2f8cff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,140,255,.25)}
+.leaflet-control-scale-line{background:rgba(21,25,29,.8);color:#fff;border-color:#fff}
+.leaflet-control-attribution{background:rgba(21,25,29,.7)!important;color:#aab!important;font-size:10px}
+.leaflet-control-attribution a{color:#cde!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--txt)}
+.toast{position:absolute;z-index:2000;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom));background:#000c;color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;display:none}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--mut);border-top-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
+@keyframes s{to{transform:rotate(360deg)}}
+a{color:var(--acc)}
+input[type=range]{width:100%}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="cross"></div>
+
+<div id="top">
+  <div id="brand"><b>▲</b> Northwoods Hunt Map</div>
+  <button id="wxChip" title="Weather, sun & moon">🌡️ —</button>
+  <div id="searchWrap">
+    <input id="search" type="text" placeholder="Search place, address, or lat, lon" autocomplete="off">
+    <button id="searchMode" title="Switch between place and landowner search">Place</button>
+    <div id="results"></div>
+  </div>
+</div>
+
+<div id="side">
+  <button class="fab" id="btnLayers" title="Map layers">🗺️</button>
+  <button class="fab" id="btnList" title="My waypoints &amp; shapes">📒</button>
+  <button class="fab" id="btnLocate" title="Show my location">◎</button>
+  <button class="fab" id="btnZoomIn" title="Zoom in">＋</button>
+  <button class="fab" id="btnZoomOut" title="Zoom out">－</button>
+</div>
+
+<div id="zoomMsg">Zoom in to see property lines</div>
+<div id="coords" title="Tap to copy">—</div>
+<div id="legend">
+  <div class="seg"><button data-view="all">All land</button><button data-view="public">Public only</button><button id="legHide" title="Hide legend">▾</button></div>
+  <div id="legItems"></div>
+</div>
+<button class="fab" id="legendToggle" title="Show legend">🔑</button>
+
+<div id="tools">
+  <button data-tool="info" class="on"><span>👆</span>Identify</button>
+  <button data-tool="dist"><span>📏</span>Distance</button>
+  <button data-tool="area"><span>⬠</span>Area</button>
+  <button data-tool="wpt"><span>📍</span>Mark</button>
+  <button id="btnMarkHere"><span>🎯</span>Mark GPS</button>
+</div>
+
+<!-- Layers -->
+<div class="panel" id="layersPanel">
+  <header>Map layers <button data-close>×</button></header>
+  <div class="body">
+    <h4>Basemap</h4>
+    <div class="bm" id="bmGrid"></div>
+    <div class="row"><label><input type="checkbox" id="ovLabels" checked> Road &amp; place labels</label></div>
+    <div class="row"><label><input type="checkbox" id="ovHill"> Terrain shading</label></div>
+    <h4>Property lines</h4>
+    <div class="row"><label><input type="checkbox" id="lyParcels" checked><span class="sw" id="parcelSw" style="border-color:#ffd400"></span> Parcel lines</label>
+      <select id="parcelColor" style="width:auto;padding:4px"><option value="#ffd400">Yellow</option><option value="#ff3b30">Red</option><option value="#00e5ff">Cyan</option><option value="#ffffff">White</option><option value="#ff00ff">Magenta</option></select></div>
+    <div class="row"><label><input type="checkbox" id="lyOwners" checked> Landowner names on map</label></div>
+    <h4>Public land</h4>
+    <div class="row"><label><input type="checkbox" id="dimPriv"> Dim private land (makes public pop)</label></div>
+    <div id="publicRows"></div>
+    <h4>Hunting units</h4>
+    <div id="unitRows"></div>
+    <h4>Public land opacity</h4>
+    <input type="range" id="pubOpacity" min="0.2" max="1" step="0.05" value="0.8">
+    <h4>About the data</h4>
+    <div class="note">Property lines and owners come from the MN DNR statewide parcel compilation and MnGeo's open county parcels, queried live. Coverage is uneven: all 87 counties have lines, but some counties don't publish owner names (see the <a href="#" id="covLink">coverage note</a>). Always confirm ownership and get permission before hunting private land. This app is not a legal survey.</div>
+  </div>
+</div>
+
+<!-- My items -->
+<div class="panel" id="listPanel">
+  <header>My waypoints &amp; shapes <button data-close>×</button></header>
+  <div class="body">
+    <div id="itemList"></div>
+    <div class="btns">
+      <button class="btn" id="expGpx">Export GPX</button>
+      <button class="btn" id="expJson">Export GeoJSON</button>
+      <label class="btn" style="display:inline-block">Import… <input type="file" id="impFile" accept=".gpx,.json,.geojson,.kml" hidden></label>
+    </div>
+    <div class="btns"><button class="btn dng" id="clearAll">Delete everything</button></div>
+    <div class="note">Saved in this browser only. Export a GPX to back up or load into a GPS / other hunting app.</div>
+  </div>
+</div>
+
+<!-- Info -->
+<div class="panel" id="infoPanel">
+  <header><span id="infoTitle">Property</span> <button data-close>×</button></header>
+  <div class="body" id="infoBody"></div>
+</div>
+
+<!-- Measure -->
+<div class="panel" id="measurePanel">
+  <header><span id="mTitle">Measure distance</span> <button data-close>×</button></header>
+  <div class="body">
+    <div class="big" id="mValue">0 ft</div>
+    <div class="sub" id="mSub">Tap the map to add points.</div>
+    <div class="btns">
+      <button class="btn" id="mUndo">Undo</button>
+      <button class="btn" id="mClear">Clear</button>
+      <button class="btn" id="mUnits">Units</button>
+      <button class="btn pri" id="mSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Waypoint editor -->
+<div class="panel" id="wptPanel">
+  <header><span id="wTitle">New waypoint</span> <button data-close>×</button></header>
+  <div class="body">
+    <input type="text" id="wName" placeholder="Name">
+    <div class="types" id="wTypes"></div>
+    <textarea id="wNotes" placeholder="Notes (wind, sign, date…)"></textarea>
+    <div class="sub" id="wCoord" style="margin-top:6px"></div>
+    <div class="btns">
+      <button class="btn pri" id="wSave">Save</button>
+      <button class="btn" id="wNav">Distance from me</button>
+      <button class="btn dng" id="wDel">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="wxPanel">
+  <header><span>Weather · sun · moon</span> <button data-close>×</button></header>
+  <div class="body" id="wxBody"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg,ms){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>t.style.display='none',ms||2200);}
+const store={get(k,d){try{const v=localStorage.getItem('nhm.'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('nhm.'+k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- services ---------- */
+const SVC={
+  dnrParcels:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/plan_parcels_minnesota/MapServer',
+  openParcels:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_mngeo/plan_parcels_open/FeatureServer/0',
+  govOwn:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_mngeo/plan_gov_own_open/MapServer',
+  govOwnQ:'https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_mngeo/plan_gov_own_open/FeatureServer/0',
+  stateLand:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/plan_stateland_dnr/MapServer',
+  wma:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_wildlife_mgmt_areas_pub/MapServer',
+  stateForest:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_state_forest/MapServer',
+  walkIn:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_dnr_walk_in_access_sites/MapServer',
+  dpa:'https://gis.dnr.state.mn.us/appserver/rest/services/webGDRS/bdry_deer_permit_areas/MapServer',
+  usfs:'https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_BasicOwnership_02/MapServer',
+  fws:'https://services.arcgis.com/QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWSInterest_Simplified_Authoritative/FeatureServer/0',
+  geocode:'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer'
+};
+const MN_BOUNDS=L.latLngBounds([43.43,-97.3],[49.4,-89.4]);
+
+/* ---------- map ---------- */
+const startView=store.get('view',{c:[46.35,-94.2],z:7});
+const map=L.map('map',{zoomControl:false,center:startView.c,zoom:startView.z,maxZoom:20,worldCopyJump:false,doubleClickZoom:true,preferCanvas:false});
+L.control.scale({imperial:true,metric:false,position:'bottomright'}).addTo(map);
+map.createPane('public');map.getPane('public').style.zIndex=350;
+map.createPane('units');map.getPane('units').style.zIndex=380;
+map.createPane('parcels');map.getPane('parcels').style.zIndex=420;
+map.createPane('hl');map.getPane('hl').style.zIndex=440;
+map.createPane('labels');map.getPane('labels').style.zIndex=430;map.getPane('labels').style.pointerEvents='none';
+map.createPane('hill');map.getPane('hill').style.zIndex=210;map.getPane('hill').style.mixBlendMode='multiply';
+
+const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/';
+const BASEMAPS={
+  hybrid:{name:'Satellite',mk:()=>L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'})},
+  usgsimg:{name:'Sat + Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
+  topo:{name:'USGS Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
+  otm:{name:'OpenTopo',mk:()=>L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:17,subdomains:'abc',attribution:'© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors'})},
+  esritopo:{name:'Esri Topo',mk:()=>L.tileLayer(ESRI+'World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,attribution:'© Esri'})},
+  streets:{name:'Streets',mk:()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:19,attribution:'© OpenStreetMap contributors'})}
+};
+let baseLayer=null,curBase=store.get('base','hybrid');
+const labelLayers=L.layerGroup([
+  L.tileLayer(ESRI+'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,pane:'labels',opacity:.85}),
+  L.tileLayer(ESRI+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,pane:'labels'})
+]);
+const hillLayer=L.tileLayer(ESRI+'Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,pane:'hill',opacity:.55,attribution:'Hillshade © Esri'});
+function setBase(k){
+  if(!BASEMAPS[k])k='hybrid';
+  if(baseLayer)map.removeLayer(baseLayer);
+  baseLayer=BASEMAPS[k].mk().addTo(map);baseLayer.bringToBack();curBase=k;store.set('base',k);
+  document.querySelectorAll('#bmGrid button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  const wantLabels=$('#ovLabels').checked&&(k==='hybrid');
+  if(wantLabels)labelLayers.addTo(map);else map.removeLayer(labelLayers);
+}
+$('#bmGrid').innerHTML=Object.entries(BASEMAPS).map(([k,v])=>`<button data-k="${k}">${v.name}</button>`).join('');
+$('#bmGrid').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setBase(b.dataset.k)});
+$('#ovLabels').addEventListener('change',()=>setBase(curBase));
+$('#ovHill').addEventListener('change',e=>e.target.checked?hillLayer.addTo(map):map.removeLayer(hillLayer));
+
+/* ---------- dynamic (server-drawn) layers ---------- */
+const rgb=h=>{h=h.replace('#','');return[parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)]};
+const fillSym=(fill,fa,line,lw,style)=>({type:'esriSFS',style:fa>0?'esriSFSSolid':'esriSFSNull',color:[...rgb(fill),fa],outline:{type:'esriSLS',style:style||'esriSLSSolid',color:[...rgb(line),255],width:lw}});
+const labelInfo=(expr,color,size,minScale)=>[{labelExpressionInfo:{expression:expr},labelPlacement:'esriServerPolygonPlacementAlwaysHorizontal',minScale:minScale||0,symbol:{type:'esriTS',color:[...rgb(color),255],haloColor:[0,0,0,255],haloSize:1.5,font:{family:'Arial',size:size||9,weight:'bold'}}}];
+function dyn(url,layerId,symbol,opts){
+  opts=opts||{};
+  const dl=[{id:layerId,source:{type:'mapLayer',mapLayerId:layerId},definitionExpression:opts.where||'',drawingInfo:{renderer:{type:'simple',symbol},showLabels:!!opts.labels,labelingInfo:opts.labels||null}}];
+  return L.esri.dynamicMapLayer({url,f:'image',format:'png32',transparent:true,pane:opts.pane||'public',dynamicLayers:JSON.stringify(dl),opacity:opts.opacity==null?1:opts.opacity,attribution:opts.attr||'MN DNR'});
+}
+
+/* Parcels */
+let parcelColor=store.get('pcolor','#ffd400');
+$('#parcelColor').value=parcelColor;$('#parcelSw').style.borderColor=parcelColor;
+const OWNER_EXPR="IIF(IsEmpty($feature.owner_name), $feature.tax_name, $feature.owner_name)";
+let parcelLayer=null;
+const PARCEL_MINZOOM=13;
+function buildParcels(){
+  if(parcelLayer)map.removeLayer(parcelLayer);
+  const labels=$('#lyOwners').checked?labelInfo(OWNER_EXPR,'#ffffff',9,36000):null;
+  parcelLayer=dyn(SVC.dnrParcels,1,fillSym('#000000',0,parcelColor,1.5),{pane:'parcels',labels,attr:'Parcels: MN DNR / MnGeo county data'});
+  syncParcels();
+}
+function syncParcels(){
+  const want=$('#lyParcels').checked;
+  const zoomOk=map.getZoom()>=PARCEL_MINZOOM;
+  if(want&&zoomOk){if(!map.hasLayer(parcelLayer))parcelLayer.addTo(map)}else if(parcelLayer&&map.hasLayer(parcelLayer))map.removeLayer(parcelLayer);
+  $('#zoomMsg').style.display=(want&&!zoomOk&&MN_BOUNDS.contains(map.getCenter()))?'block':'none';
+}
+$('#lyParcels').addEventListener('change',syncParcels);
+$('#lyOwners').addEventListener('change',buildParcels);
+$('#parcelColor').addEventListener('change',e=>{parcelColor=e.target.value;store.set('pcolor',parcelColor);$('#parcelSw').style.borderColor=parcelColor;buildParcels();renderLegend()});
+
+/* Public land + units */
+const PUB=[
+  {id:'state',name:'DNR state land',color:'#2ecc40',sym:()=>fillSym('#2ecc40',110,'#2ecc40',1.2),url:SVC.stateLand,lid:0,on:true,minZoom:8,where:"mgtprgname IS NULL OR mgtprgname <> 'WILDLIFE MANAGEMENT AREA'",note:'State-owned land administered by DNR (WMAs, state forest land, SNAs, parks). Rules vary by unit.'},
+  {id:'wma',name:'Wildlife Mgmt Areas (WMA)',color:'#ff7a00',sym:()=>fillSym('#ff7a00',125,'#ff7a00',2),url:SVC.wma,lid:0,on:true,labels:()=>labelInfo('$feature.unit_name','#ffcf99',9,150000)},
+  {id:'county',name:'County / tax-forfeit & other public',color:'#b266ff',sym:()=>fillSym('#b266ff',115,'#b266ff',1.2),url:SVC.govOwn,lid:0,on:true,minZoom:10,where:"govt_own IN ('Tax Forfeit','County Fee')",attr:'MnGeo',note:'From MnGeo open counties only. Tax-forfeit land is usually open to hunting; check county rules.'},
+  {id:'usfs',name:'National Forest',color:'#00c2a8',sym:()=>fillSym('#00c2a8',105,'#00c2a8',1.2),url:SVC.usfs,lid:0,on:true,attr:'USDA Forest Service',where:"ownerclassification = 'USDA FOREST SERVICE'"},
+  {id:'fws',name:'USFWS (WPAs & refuges)',color:'#2f8cff',fws:true,on:true,minZoom:9,note:'Waterfowl Production Areas are generally open to hunting; National Wildlife Refuges have special rules.'},
+  {id:'walkin',name:'Walk-In Access (private, open)',color:'#ff4fa3',sym:()=>fillSym('#ff4fa3',120,'#ff4fa3',2),url:SVC.walkIn,lid:0,on:true,note:'Private land enrolled in the Walk-In Access program, open Sept 1–May 31 with a validation.'},
+  {id:'sforest',name:'State Forest boundaries',color:'#7cff7c',sym:()=>fillSym('#000000',0,'#7cff7c',1.6,'esriSLSDash'),url:SVC.stateForest,lid:0,on:false,labels:()=>labelInfo('$feature.name','#b9ffb9',10,600000),note:'Boundary only – private land exists inside state forests.'}
+];
+const UNITS=[
+  {id:'dpa',name:'Deer Permit Areas',color:'#ff4d4d',sym:()=>fillSym('#000000',0,'#ff4d4d',2),url:SVC.dpa,lid:0,on:false,pane:'units',labels:()=>labelInfo("'DPA ' + $feature.dpa",'#ff9c9c',12,0)}
+];
+const pubOn=store.get('pubOn',null);
+let pubOpacity=+store.get('pubOp',0.8);$('#pubOpacity').value=pubOpacity;
+const lyr={};
+function mkLayer(d){
+  if(d.fws){
+    return L.esri.featureLayer({url:SVC.fws,pane:d.pane||'public',minZoom:d.minZoom||0,simplifyFactor:0.5,precision:6,attribution:'USFWS',where:"FWSREGION = '3' AND INTTYPE1 <> 'E' AND (RSL_TYPE IS NULL OR RSL_TYPE <> 'Approved')",fields:['OBJECTID','ORGNAME','UNITNAME','INTTYPE1','RSL_TYPE'],
+      style:()=>({color:'#2f8cff',weight:1.6,fillColor:'#2f8cff',fillOpacity:.45*pubOpacity,opacity:pubOpacity,interactive:false})});
+  }
+  return dyn(d.url,d.lid,d.sym(),{pane:d.pane||'public',where:d.where,labels:d.labels&&d.labels(),opacity:pubOpacity,attr:d.attr});
+}
+function rowHtml(d){const checked=(pubOn&&d.id in pubOn)?pubOn[d.id]:d.on;d.checked=checked;
+  return `<div class="row" title="${esc(d.note||'')}"><label><input type="checkbox" data-ly="${d.id}" ${checked?'checked':''}><span class="sw" style="border-color:${d.color};background:${d.color}55"></span>${esc(d.name)}</label></div>`}
+$('#publicRows').innerHTML=PUB.map(rowHtml).join('');
+$('#unitRows').innerHTML=UNITS.map(rowHtml).join('');
+const ALL=[...PUB,...UNITS];
+function syncPub(){
+  const state={};
+  ALL.forEach(d=>{
+    state[d.id]=d.checked;
+    const z=map.getZoom();
+    const vis=d.checked&&(!d.minZoom||z>=d.minZoom);
+    if(vis){if(!lyr[d.id])lyr[d.id]=mkLayer(d);if(!map.hasLayer(lyr[d.id]))lyr[d.id].addTo(map)}
+    else if(lyr[d.id]&&map.hasLayer(lyr[d.id]))map.removeLayer(lyr[d.id]);
+  });
+  store.set('pubOn',state);
+}
+document.querySelectorAll('[data-ly]').forEach(cb=>cb.addEventListener('change',e=>{ALL.find(d=>d.id===e.target.dataset.ly).checked=e.target.checked;syncPub()}));
+$('#pubOpacity').addEventListener('input',e=>{pubOpacity=+e.target.value;store.set('pubOp',pubOpacity);
+  ALL.forEach(d=>{const l=lyr[d.id];if(!l)return;if(d.fws)l.setStyle({opacity:pubOpacity,fillOpacity:.45*pubOpacity});else l.setOpacity(pubOpacity)})});
+
+map.on('zoomend',()=>{syncParcels();syncPub()});
+
+/* ---------- legend & public-only view ---------- */
+map.createPane('dim');map.getPane('dim').style.zIndex=300;map.getPane('dim').style.pointerEvents='none';
+const dimLayer=L.rectangle([[-85,-180],[85,180]],{pane:'dim',stroke:false,fillColor:'#000',fillOpacity:.55,interactive:false});
+let view=store.get('viewMode','all');
+function setDim(on){$('#dimPriv').checked=on;if(on)dimLayer.addTo(map);else map.removeLayer(dimLayer);store.set('dim',on)}
+$('#dimPriv').addEventListener('change',e=>setDim(e.target.checked));
+function setView(v){
+  view=v;store.set('viewMode',v);
+  document.querySelectorAll('#legend [data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
+  if(v==='public'){PUB.forEach(d=>{if(d.id!=='sforest')d.checked=true});$('#lyParcels').checked=false;setDim(true)}
+  else{$('#lyParcels').checked=true;setDim(store.get('dimAll',false))}
+  document.querySelectorAll('[data-ly]').forEach(cb=>{cb.checked=ALL.find(d=>d.id===cb.dataset.ly).checked});
+  syncParcels();syncPub();renderLegend();
+}
+function renderLegend(){
+  const rows=PUB.filter(d=>d.id!=='sforest').map(d=>`<div class="li ${d.checked?'':'off'}" data-lg="${d.id}"><span class="sw" style="border-color:${d.color};background:${d.color}99"></span>${esc(d.name)}</div>`).join('');
+  const priv=view==='public'?'':`<div class="li" style="cursor:default"><span class="sw" style="border-color:${parcelColor};background:transparent"></span>Private (lines only)</div>`;
+  $('#legItems').innerHTML=rows+priv;
+}
+$('#legend').addEventListener('click',e=>{
+  const vb=e.target.closest('[data-view]');if(vb){setView(vb.dataset.view);return}
+  const li=e.target.closest('[data-lg]');if(li){const d=PUB.find(x=>x.id===li.dataset.lg);d.checked=!d.checked;const cb=document.querySelector(`[data-ly="${d.id}"]`);if(cb)cb.checked=d.checked;syncPub();renderLegend()}
+});
+$('#legHide').onclick=()=>{$('#legend').style.display='none';$('#legendToggle').style.display='flex';store.set('legHidden',true)};
+$('#legendToggle').onclick=()=>{$('#legend').style.display='';$('#legendToggle').style.display='none';store.set('legHidden',false)};
+if(store.get('legHidden',false)){$('#legend').style.display='none';$('#legendToggle').style.display='flex'}
+document.querySelectorAll('[data-ly]').forEach(cb=>cb.addEventListener('change',renderLegend));
+$('#dimPriv').addEventListener('change',e=>{if(view==='all')store.set('dimAll',e.target.checked)});
+$('#lyParcels').addEventListener('change',e=>{if(e.target.checked&&view==='public'){view='all';store.set('viewMode','all');document.querySelectorAll('#legend [data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view==='all'));renderLegend()}});
+map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[+c.lat.toFixed(5),+c.lng.toFixed(5)],z:map.getZoom()});updateCoords()});
+
+/* ---------- coords readout ---------- */
+let coordFmt=store.get('cfmt','dd');
+function dms(v,pos,neg){const a=Math.abs(v),d=Math.floor(a),m=Math.floor((a-d)*60),s=((a-d)*3600-m*60).toFixed(1);return `${d}°${m}'${s}"${v>=0?pos:neg}`}
+function fmtLL(ll){return coordFmt==='dd'?`${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`:`${dms(ll.lat,'N','S')} ${dms(ll.lng,'E','W')}`}
+function updateCoords(){$('#coords').textContent=fmtLL(map.getCenter())}
+$('#coords').addEventListener('click',()=>{const t=`${map.getCenter().lat.toFixed(6)}, ${map.getCenter().lng.toFixed(6)}`;
+  if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast('Copied '+t)).catch(()=>{});
+  coordFmt=coordFmt==='dd'?'dms':'dd';store.set('cfmt',coordFmt);updateCoords()});
+map.on('move',updateCoords);updateCoords();
+
+/* ---------- panels ---------- */
+function showPanel(id,on){const p=$('#'+id);p.classList.toggle('show',on!==false)}
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{const p=b.closest('.panel');p.classList.remove('show');if(p.id==='measurePanel')setTool('info');if(p.id==='infoPanel')clearHL();if(p.id==='wptPanel')editing=null;}));
+$('#btnLayers').addEventListener('click',()=>{showPanel('listPanel',false);showPanel('wxPanel',false);showPanel('layersPanel',!$('#layersPanel').classList.contains('show'))});
+$('#btnList').addEventListener('click',()=>{showPanel('layersPanel',false);showPanel('wxPanel',false);renderList();showPanel('listPanel',!$('#listPanel').classList.contains('show'))});
+$('#btnZoomIn').addEventListener('click',()=>map.zoomIn());
+$('#btnZoomOut').addEventListener('click',()=>map.zoomOut());
+$('#covLink').addEventListener('click',e=>{e.preventDefault();showCoverage()});
+
+/* ---------- REST helpers ---------- */
+async function rest(url,params){
+  const u=new URL(url);Object.entries(Object.assign({f:'json'},params)).forEach(([k,v])=>u.searchParams.set(k,typeof v==='object'?JSON.stringify(v):v));
+  const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),15000);
+  try{const r=await fetch(u,{signal:ctl.signal});const j=await r.json();if(j.error)throw new Error(j.error.message);return j}finally{clearTimeout(t)}
+}
+const ptQuery=(ll,extra)=>Object.assign({geometry:`${ll.lng},${ll.lat}`,geometryType:'esriGeometryPoint',inSR:4326,spatialRel:'esriSpatialRelIntersects',returnGeometry:false,outFields:'*'},extra||{});
+
+/* ---------- identify ---------- */
+const hl=L.geoJSON(null,{pane:'hl',style:{color:'#00e5ff',weight:3,fillColor:'#00e5ff',fillOpacity:.12}}).addTo(map);
+let lastParcel=null;
+function clearHL(){hl.clearLayers();lastParcel=null}
+const fmtMoney=v=>v==null||v===0?'—':'$'+Number(v).toLocaleString();
+const fmtDate=v=>v?new Date(v).toLocaleDateString():'—';
+function geoArea(lls){const R=6378137,rad=Math.PI/180;let a=0;const n=lls.length;if(n<3)return 0;
+  for(let i=0;i<n;i++){const p1=lls[i],p2=lls[(i+1)%n];a+=(p2.lng-p1.lng)*rad*(2+Math.sin(p1.lat*rad)+Math.sin(p2.lat*rad))}return Math.abs(a*R*R/2)}
+function featureAcres(f){let tot=0;const g=f.geometry;if(!g)return 0;
+  const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+  polys.forEach(p=>p.forEach((ring,i)=>{const a=geoArea(ring.map(c=>({lat:c[1],lng:c[0]})));tot+=i===0?a:-a}));return tot/4046.8564}
+
+async function identify(ll){
+  showPanel('layersPanel',false);showPanel('listPanel',false);
+  $('#infoTitle').textContent='Property';
+  $('#infoBody').innerHTML='<div class="sub"><span class="spin"></span> Looking up this spot…</div>';
+  showPanel('infoPanel');clearHL();
+  const tasks={
+    parcel: map.getZoom()>=11? rest(SVC.dnrParcels+'/1/query',ptQuery(ll,{returnGeometry:true,outSR:4326,f:'geojson'})):Promise.resolve(null),
+    open: map.getZoom()>=11? rest(SVC.openParcels+'/query',ptQuery(ll)):Promise.resolve(null),
+    wma: rest(SVC.wma+'/0/query',ptQuery(ll,{outFields:'unit_name,name,deer,bear,small_game,waterfowl,pheasants,turkey,forest_upland_birds,special_restrictions,gis_area_acres,nearest_town'})),
+    state: rest(SVC.stateLand+'/0/query',ptQuery(ll,{outFields:'administrator,mgtprgname,mgtprjname,landtype'})),
+    sf: rest(SVC.stateForest+'/0/query',ptQuery(ll,{outFields:'name'})),
+    gov: rest(SVC.govOwnQ+'/query',ptQuery(ll,{outFields:'govt_own,co_name'})),
+    usfs: rest(SVC.usfs+'/0/query',ptQuery(ll,{outFields:'ownerclassification,forestname'})),
+    fws: rest(SVC.fws+'/query',ptQuery(ll,{outFields:'ORGNAME,UNITNAME,INTTYPE1,RSL_TYPE',where:"INTTYPE1 <> 'E'"})),
+    walk: rest(SVC.walkIn+'/0/query',ptQuery(ll,{outFields:'map_title,acres,uses,cty_name'})),
+    dpa: rest(SVC.dpa+'/0/query',ptQuery(ll,{outFields:'dpa'}))
+  };
+  const keys=Object.keys(tasks);
+  const res=await Promise.allSettled(Object.values(tasks));
+  const R={};keys.forEach((k,i)=>R[k]=res[i].status==='fulfilled'?res[i].value:{_err:res[i].reason});
+  const feats=k=>(R[k]&&R[k].features)||[];
+  let html='';
+  // public land badges
+  const tags=[];
+  feats('wma').forEach(f=>tags.push(['WMA: '+(f.attributes.unit_name||f.attributes.name||''),'#ff7a00']));
+  feats('walk').forEach(f=>tags.push(['Walk-In Access: '+(f.attributes.map_title||''),'#ff4fa3']));
+  feats('usfs').forEach(f=>{if(/FOREST SERVICE/i.test(f.attributes.ownerclassification||''))tags.push(['National Forest'+(f.attributes.forestname?': '+f.attributes.forestname:''),'#00c2a8'])});
+  feats('fws').forEach(f=>{if(f.attributes.RSL_TYPE!=='Approved')tags.push(['USFWS: '+(f.attributes.ORGNAME||f.attributes.UNITNAME||''),'#2f8cff'])});
+  feats('state').forEach(f=>tags.push(['State land: '+[f.attributes.administrator,f.attributes.mgtprgname].filter(Boolean).join(' · '),'#2ecc40']));
+  feats('gov').forEach(f=>{const g=f.attributes.govt_own||'Public';tags.push([g==='Tribal'?'Tribal land – permission required':g+' ('+(f.attributes.co_name||'')+' Co.)',g==='Tribal'?'#e5533d':'#b266ff'])});
+  feats('sf').forEach(f=>tags.push(['Inside '+f.attributes.name+' State Forest','#7cff7c']));
+  feats('dpa').forEach(f=>tags.push(['Deer Permit Area '+f.attributes.dpa,'#ff4d4d']));
+  const isPublic=feats('wma').length||feats('state').length||feats('gov').some(f=>f.attributes.govt_own!=='Tribal')||feats('usfs').some(f=>/FOREST SERVICE/i.test(f.attributes.ownerclassification||''))||feats('fws').some(f=>f.attributes.RSL_TYPE!=='Approved');
+  // parcel
+  const pf=feats('parcel')[0];
+  const oa=(feats('open')[0]||{}).attributes;
+  if(pf){
+    hl.addData(pf);lastParcel=pf;
+    const owner=(oa&&(oa.owner_name||oa.tax_name))||pf.properties.owner_name||pf.properties.tax_name;
+    const acresCalc=featureAcres(pf);
+    html+=`<div class="owner">${owner?esc(owner):'<span class="sub">Owner not published for this county</span>'}</div>`;
+    if(oa&&oa.owner_more)html+=`<div class="sub">${esc(oa.owner_more)}</div>`;
+    html+=`<div class="sub" style="margin-bottom:8px">${isPublic?'<b style="color:#4caf50">Public land</b> · ':''}${acresCalc.toFixed(2)} acres (mapped)</div>`;
+    if(oa){
+      const addr=[oa.anumber,oa.st_pre_dir,oa.st_name,oa.st_pos_typ,oa.st_pos_dir].filter(Boolean).join(' ');
+      const mail=[oa.own_add_l1,oa.own_add_l2,oa.own_add_l3,oa.own_add_l4].filter(Boolean).join(', ')||[oa.tax_add_l1,oa.tax_add_l2,oa.tax_add_l3].filter(Boolean).join(', ');
+      const rows=[['County',oa.co_name],['Township/City',oa.ctu_name],['Site address',addr],['Owner mailing',mail],['Taxpayer',oa.tax_name!==owner?oa.tax_name:''],['Deeded acres',oa.acres_deed||''],['GIS acres',oa.acres_poly||''],['PIN',oa.county_pin],['Legal',oa.abb_legal],['Twp-Rng-Sec',oa.township?`T${oa.township}N R${oa.range}${oa.range_dir||'W'} S${oa.section}`:''],['Homestead',oa.homestead],['Market value',fmtMoney(oa.emv_total)],['Land value',fmtMoney(oa.emv_land)],['Last sale',oa.sale_date?fmtDate(oa.sale_date)+' · '+fmtMoney(oa.sale_value):''],['Green Acres',oa.green_acre],['Tax exempt',oa.tax_exempt],['Tax year',oa.tax_year]];
+      html+='<div class="kv">'+rows.filter(r=>r[1]!=null&&r[1]!==''&&r[1]!=='—').map(r=>`<div>${r[0]}</div><div>${esc(r[1])}</div>`).join('')+'</div>';
+    }else{
+      html+=`<div class="note">Detailed tax-roll info isn't in the open statewide set for this county. Check the county assessor/GIS site for more.</div>`;
+    }
+    html+=`<div class="btns"><button class="btn pri" id="pMeasure">Measure this parcel</button><button class="btn" id="pSave">Save outline</button></div>`;
+  }else if(map.getZoom()<11){
+    html+='<div class="note">Zoom in closer to look up property owners.</div>';
+  }else{
+    html+='<div class="note">No parcel found here (could be water, road right-of-way, or a gap in county data).</div>';
+  }
+  if(tags.length)html+='<h4>Land status &amp; units</h4>'+tags.map(t=>`<span class="tag" style="border-color:${t[1]};color:${t[1]}">${esc(t[0])}</span>`).join('');
+  const w=feats('wma')[0];
+  if(w){const a=w.attributes;const g=['deer','bear','small_game','waterfowl','pheasants','turkey','forest_upland_birds'].filter(k=>a[k]&&/y|1|true/i.test(String(a[k]))).map(k=>k.replace(/_/g,' '));
+    html+=`<div class="kv" style="margin-top:8px">${a.gis_area_acres?`<div>WMA acres</div><div>${Math.round(a.gis_area_acres)}</div>`:''}${g.length?`<div>Game</div><div>${esc(g.join(', '))}</div>`:''}${a.special_restrictions?`<div>Restrictions</div><div>${esc(a.special_restrictions)}</div>`:''}${a.nearest_town?`<div>Nearest town</div><div>${esc(a.nearest_town)}</div>`:''}</div>`}
+  html+=`<div class="sub" style="margin-top:10px">${fmtLL(ll)}</div><div class="btns"><button class="btn" id="pMark">📍 Mark this spot</button></div>`;
+  const failed=keys.filter(k=>R[k]&&R[k]._err);
+  if(failed.length)html+=`<div class="note">Some layers didn't answer (${failed.join(', ')}). Try again in a moment.</div>`;
+  $('#infoBody').innerHTML=html;
+  const pm=$('#pMeasure');if(pm)pm.onclick=()=>{const ring=outerRing(lastParcel);if(!ring)return;setTool('area');mPts=ring;redrawMeasure();showPanel('infoPanel',false);};
+  const ps=$('#pSave');if(ps)ps.onclick=()=>{const ring=outerRing(lastParcel);if(!ring)return;const owner=$('.owner')?$('.owner').textContent:'Parcel';addItem({kind:'area',name:owner.slice(0,60),pts:ring.map(p=>[p.lat,p.lng]),notes:''});toast('Saved to My items')};
+  $('#pMark').onclick=()=>openWpt(null,ll);
+}
+function outerRing(f){if(!f)return null;const g=f.geometry;let r=g.type==='Polygon'?g.coordinates[0]:g.type==='MultiPolygon'?g.coordinates[0][0]:null;if(!r)return null;
+  r=r.map(c=>L.latLng(c[1],c[0]));if(r.length>1&&r[0].equals(r[r.length-1]))r.pop();return r}
+
+/* ---------- tools ---------- */
+let tool='info';
+function setTool(t){
+  tool=t;
+  document.querySelectorAll('#tools [data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
+  if(t==='dist'||t==='area'){mPts=[];redrawMeasure();$('#mTitle').textContent=t==='dist'?'Measure distance':'Measure area';showPanel('measurePanel');showPanel('infoPanel',false);map.doubleClickZoom.disable()}
+  else{showPanel('measurePanel',false);mPts=[];redrawMeasure();map.doubleClickZoom.enable()}
+  if(t==='wpt')toast('Tap the map to drop a waypoint');
+  $('#map').style.cursor=t==='info'?'':'crosshair';
+}
+document.querySelectorAll('#tools [data-tool]').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool===tool&&tool!=='info'?'info':b.dataset.tool)));
+
+/* measure */
+let mPts=[],mUnits=store.get('munits',0);
+const mLayer=L.layerGroup().addTo(map);
+let rubber=null;
+function fmtDist(m){
+  if(mUnits===1)return m<1000?`${m.toFixed(0)} m`:`${(m/1000).toFixed(2)} km`;
+  if(mUnits===2)return `${(m*1.09361).toFixed(0)} yd`;
+  const ft=m*3.28084;return ft<5280?`${ft.toFixed(0)} ft`:`${(ft/5280).toFixed(2)} mi`}
+function fmtArea(m2){const ac=m2/4046.8564;if(mUnits===1)return m2<1e6?`${(m2/1e4).toFixed(2)} ha`:`${(m2/1e6).toFixed(2)} km²`;
+  return ac<640?`${ac.toFixed(ac<10?2:1)} acres`:`${ac.toFixed(0)} acres (${(ac/640).toFixed(2)} sq mi)`}
+function pathLen(p,closed){let d=0;for(let i=1;i<p.length;i++)d+=p[i-1].distanceTo(p[i]);if(closed&&p.length>2)d+=p[p.length-1].distanceTo(p[0]);return d}
+function redrawMeasure(){
+  mLayer.clearLayers();
+  if(!mPts.length){$('#mValue').textContent=tool==='area'?'0 acres':'0 ft';$('#mSub').textContent=tool==='area'?'Tap the map to outline an area.':'Tap the map to add points.';return}
+  if(tool==='area'&&mPts.length>2)L.polygon(mPts,{color:'#ffd400',weight:3,fillOpacity:.18,interactive:false}).addTo(mLayer);
+  else L.polyline(mPts,{color:'#ffd400',weight:3,interactive:false}).addTo(mLayer);
+  mPts.forEach((p,i)=>{const m=L.marker(p,{draggable:true,icon:L.divIcon({className:'',html:'<div class="vtx"></div>',iconSize:[0,0]})}).addTo(mLayer);
+    m.on('drag',e=>{mPts[i]=e.target.getLatLng();updateMeasureText();redrawShapeOnly()});m.on('dragend',redrawMeasure);
+    m.on('click',e=>{L.DomEvent.stopPropagation(e);if(i===0&&tool==='area'&&mPts.length>2)toast('Area closed – tap Save to keep it')})});
+  if(tool==='dist')for(let i=1;i<mPts.length;i++){const mid=L.latLng((mPts[i-1].lat+mPts[i].lat)/2,(mPts[i-1].lng+mPts[i].lng)/2);
+    L.tooltip({permanent:true,direction:'center',className:'mlabel',interactive:false}).setLatLng(mid).setContent(fmtDist(mPts[i-1].distanceTo(mPts[i]))).addTo(mLayer)}
+  updateMeasureText();
+}
+function redrawShapeOnly(){mLayer.eachLayer(l=>{if(l instanceof L.Polyline)l.setLatLngs(mPts)})}
+function updateMeasureText(){
+  if(tool==='area'){$('#mValue').textContent=fmtArea(geoArea(mPts));$('#mSub').textContent=`Perimeter ${fmtDist(pathLen(mPts,true))} · ${mPts.length} points${mPts.length<3?' – add at least 3':''}`}
+  else{$('#mValue').textContent=fmtDist(pathLen(mPts));$('#mSub').textContent=`${mPts.length} points · drag points to adjust`}
+}
+$('#mUndo').onclick=()=>{mPts.pop();redrawMeasure()};
+$('#mClear').onclick=()=>{mPts=[];redrawMeasure()};
+$('#mUnits').onclick=()=>{mUnits=(mUnits+1)%(tool==='area'?2:3);store.set('munits',mUnits);redrawMeasure()};
+$('#mSave').onclick=()=>{
+  if(tool==='dist'&&mPts.length<2||tool==='area'&&mPts.length<3){toast('Add more points first');return}
+  const n=tool==='area'?`Area ${fmtArea(geoArea(mPts))}`:`Line ${fmtDist(pathLen(mPts))}`;
+  addItem({kind:tool==='area'?'area':'line',name:n,pts:mPts.map(p=>[+p.lat.toFixed(6),+p.lng.toFixed(6)]),notes:''});
+  toast('Saved to My items');mPts=[];redrawMeasure();
+};
+map.on('mousemove',e=>{
+  if((tool!=='dist'&&tool!=='area')||!mPts.length){if(rubber){map.removeLayer(rubber);rubber=null}return}
+  const pts=tool==='area'&&mPts.length>1?[mPts[mPts.length-1],e.latlng,mPts[0]]:[mPts[mPts.length-1],e.latlng];
+  if(!rubber)rubber=L.polyline(pts,{color:'#ffd400',weight:2,dashArray:'6 6',interactive:false}).addTo(map);else rubber.setLatLngs(pts);
+});
+
+/* ---------- waypoints & items ---------- */
+const TYPES=[['pin','📍','Pin','#e5533d'],['stand','🪜','Tree stand','#8b5a2b'],['blind','⛺','Blind','#556b2f'],['cam','📷','Trail cam','#455a64'],['park','🅿️','Parking','#1565c0'],['rub','🦌','Rub/Scrape','#b8860b'],['bed','🛌','Bedding','#6d4c41'],['food','🌾','Food','#9e9d24'],['water','💧','Water','#0288d1'],['gate','🚧','Gate','#ef6c00'],['harvest','🎯','Harvest','#c62828'],['camp','🏕️','Camp','#2e7d32']];
+const T=Object.fromEntries(TYPES.map(t=>[t[0],{e:t[1],n:t[2],c:t[3]}]));
+$('#wTypes').innerHTML=TYPES.map(t=>`<button data-t="${t[0]}"><span>${t[1]}</span>${t[2]}</button>`).join('');
+let wType='pin',editing=null,editLL=null;
+$('#wTypes').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;wType=b.dataset.t;document.querySelectorAll('#wTypes button').forEach(x=>x.classList.toggle('on',x===b))});
+let items=store.get('items',[]);
+const itemLayer=L.layerGroup().addTo(map);
+const save=()=>store.set('items',items);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function wIcon(t){const d=T[t]||T.pin;return L.divIcon({className:'',html:`<div class="wpt" style="background:${d.c}"><span>${d.e}</span></div>`,iconSize:[32,32],iconAnchor:[4,36],tooltipAnchor:[14,-20]})}
+function drawItems(){
+  itemLayer.clearLayers();
+  items.forEach(it=>{
+    let l;
+    if(it.kind==='wpt'){l=L.marker(it.pts[0],{icon:wIcon(it.type),draggable:false});if(it.name)l.bindTooltip(esc(it.name),{permanent:true,direction:'right',className:'wlabel'})}
+    else if(it.kind==='line')l=L.polyline(it.pts,{color:'#ff6ad5',weight:3});
+    else l=L.polygon(it.pts,{color:'#ff6ad5',weight:2.5,fillOpacity:.1});
+    l.on('click',e=>{if(tool!=='info')return;L.DomEvent.stopPropagation(e);openItem(it)});
+    l.addTo(itemLayer);it._l=l;
+  });
+}
+function addItem(it){it.id=uid();it.t=Date.now();items.push(it);save();drawItems();renderList()}
+function openItem(it){
+  if(it.kind==='wpt')return openWpt(it);
+  const ll=it.pts.map(p=>L.latLng(p[0],p[1]));
+  $('#infoTitle').textContent=it.kind==='area'?'Saved area':'Saved line';
+  $('#infoBody').innerHTML=`<input type="text" id="iName" value="${esc(it.name)}"><div class="big" style="margin-top:8px">${it.kind==='area'?fmtArea(geoArea(ll)):fmtDist(pathLen(ll))}</div><div class="sub">${it.kind==='area'?'Perimeter '+fmtDist(pathLen(ll,true)):''}</div><textarea id="iNotes" placeholder="Notes" style="margin-top:8px">${esc(it.notes||'')}</textarea><div class="btns"><button class="btn pri" id="iSave">Save</button><button class="btn" id="iEdit">Edit shape</button><button class="btn dng" id="iDel">Delete</button></div>`;
+  showPanel('infoPanel');clearHL();
+  $('#iSave').onclick=()=>{it.name=$('#iName').value;it.notes=$('#iNotes').value;save();drawItems();renderList();showPanel('infoPanel',false)};
+  $('#iDel').onclick=()=>{items=items.filter(x=>x!==it);save();drawItems();renderList();showPanel('infoPanel',false)};
+  $('#iEdit').onclick=()=>{items=items.filter(x=>x!==it);save();drawItems();setTool(it.kind==='area'?'area':'dist');mPts=ll;redrawMeasure();showPanel('infoPanel',false)};
+}
+function openWpt(it,ll){
+  editing=it;editLL=it?L.latLng(it.pts[0][0],it.pts[0][1]):ll;
+  $('#wTitle').textContent=it?'Edit waypoint':'New waypoint';
+  $('#wName').value=it?it.name:'';$('#wNotes').value=it?it.notes||'':'';
+  wType=it?it.type:wType;document.querySelectorAll('#wTypes button').forEach(x=>x.classList.toggle('on',x.dataset.t===wType));
+  $('#wCoord').textContent=fmtLL(editLL)+(it?' · saved '+new Date(it.t).toLocaleDateString():'');
+  $('#wDel').style.display=it?'':'none';
+  showPanel('infoPanel',false);showPanel('wptPanel');
+  if(!it)setTimeout(()=>$('#wName').focus(),50);
+}
+$('#wSave').onclick=()=>{
+  const name=$('#wName').value.trim()||T[wType].n;
+  if(editing){editing.name=name;editing.notes=$('#wNotes').value;editing.type=wType;save();drawItems();renderList()}
+  else addItem({kind:'wpt',type:wType,name,notes:$('#wNotes').value,pts:[[+editLL.lat.toFixed(6),+editLL.lng.toFixed(6)]]});
+  editing=null;showPanel('wptPanel',false);if(tool==='wpt')setTool('info');
+};
+$('#wDel').onclick=()=>{if(!editing)return;items=items.filter(x=>x!==editing);save();drawItems();renderList();editing=null;showPanel('wptPanel',false)};
+$('#wNav').onclick=()=>{if(!myLL){toast('Turn on location (◎) first');return}const d=myLL.distanceTo(editLL);const b=bearing(myLL,editLL);toast(`${fmtDist(d)} at ${b.toFixed(0)}° (${compass(b)}) from you`,4000)};
+function bearing(a,b){const r=Math.PI/180,y=Math.sin((b.lng-a.lng)*r)*Math.cos(b.lat*r),x=Math.cos(a.lat*r)*Math.sin(b.lat*r)-Math.sin(a.lat*r)*Math.cos(b.lat*r)*Math.cos((b.lng-a.lng)*r);return(Math.atan2(y,x)/r+360)%360}
+const compass=b=>['N','NE','E','SE','S','SW','W','NW'][Math.round(b/45)%8];
+function renderList(){
+  const el=$('#itemList');
+  if(!items.length){el.innerHTML='<div class="note">Nothing saved yet. Use Mark to drop waypoints, or save a distance/area measurement.</div>';return}
+  el.innerHTML=items.slice().reverse().map(it=>{const ll=it.pts.map(p=>L.latLng(p[0],p[1]));
+    const ic=it.kind==='wpt'?(T[it.type]||T.pin).e:it.kind==='area'?'⬠':'📏';
+    const sub=it.kind==='wpt'?(T[it.type]||T.pin).n+(myLL?' · '+fmtDist(myLL.distanceTo(ll[0]))+' away':''):it.kind==='area'?fmtArea(geoArea(ll)):fmtDist(pathLen(ll));
+    return `<div class="item" data-id="${it.id}"><div class="ic">${ic}</div><div class="t"><b>${esc(it.name)}</b><small>${esc(sub)}</small></div></div>`}).join('');
+}
+$('#itemList').addEventListener('click',e=>{const d=e.target.closest('.item');if(!d)return;const it=items.find(x=>x.id===d.dataset.id);if(!it)return;
+  if(it.kind==='wpt')map.setView(it.pts[0],Math.max(map.getZoom(),16));else map.fitBounds(L.latLngBounds(it.pts),{padding:[40,40]});
+  showPanel('listPanel',false);openItem(it)});
+$('#clearAll').onclick=()=>{if($('#clearAll').dataset.arm){items=[];save();drawItems();renderList();delete $('#clearAll').dataset.arm;$('#clearAll').textContent='Delete everything'}else{$('#clearAll').dataset.arm=1;$('#clearAll').textContent='Tap again to delete all '+items.length;setTimeout(()=>{delete $('#clearAll').dataset.arm;$('#clearAll').textContent='Delete everything'},4000)}};
+
+/* export / import */
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+const xesc=s=>esc(s);
+$('#expGpx').onclick=()=>{
+  let g='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Northwoods Hunt Map" xmlns="http://www.topografix.com/GPX/1/1">\n';
+  items.filter(i=>i.kind==='wpt').forEach(i=>{g+=`<wpt lat="${i.pts[0][0]}" lon="${i.pts[0][1]}"><time>${new Date(i.t).toISOString()}</time><name>${xesc(i.name)}</name><desc>${xesc(i.notes||'')}</desc><type>${xesc((T[i.type]||T.pin).n)}</type></wpt>\n`});
+  items.filter(i=>i.kind!=='wpt').forEach(i=>{const pts=i.kind==='area'?[...i.pts,i.pts[0]]:i.pts;g+=`<trk><name>${xesc(i.name)}</name><desc>${xesc(i.notes||'')}</desc><trkseg>${pts.map(p=>`<trkpt lat="${p[0]}" lon="${p[1]}"/>`).join('')}</trkseg></trk>\n`});
+  download('hunt-map.gpx',g+'</gpx>','application/gpx+xml');
+};
+$('#expJson').onclick=()=>{
+  const fc={type:'FeatureCollection',features:items.map(i=>({type:'Feature',properties:{name:i.name,notes:i.notes||'',kind:i.kind,type:i.type||null,created:new Date(i.t).toISOString()},
+    geometry:i.kind==='wpt'?{type:'Point',coordinates:[i.pts[0][1],i.pts[0][0]]}:i.kind==='line'?{type:'LineString',coordinates:i.pts.map(p=>[p[1],p[0]])}:{type:'Polygon',coordinates:[[...i.pts,i.pts[0]].map(p=>[p[1],p[0]])]}}))};
+  download('hunt-map.geojson',JSON.stringify(fc,null,1),'application/geo+json');
+};
+$('#impFile').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;const txt=await f.text();let n=0;
+  try{
+    if(/^\s*[{[]/.test(txt)){const j=JSON.parse(txt);(j.features||[]).forEach(ft=>{const g=ft.geometry,p=ft.properties||{};if(!g)return;
+      if(g.type==='Point'){addItem({kind:'wpt',type:p.type&&T[p.type]?p.type:'pin',name:p.name||'Waypoint',notes:p.notes||p.description||'',pts:[[g.coordinates[1],g.coordinates[0]]]});n++}
+      else if(g.type==='LineString'){addItem({kind:'line',name:p.name||'Line',notes:p.notes||'',pts:g.coordinates.map(c=>[c[1],c[0]])});n++}
+      else if(g.type==='Polygon'){const r=g.coordinates[0].map(c=>[c[1],c[0]]);r.pop();addItem({kind:'area',name:p.name||'Area',notes:p.notes||'',pts:r});n++}})}
+    else{const d=new DOMParser().parseFromString(txt,'application/xml');
+      if(d.querySelector('kml')||d.getElementsByTagName('Placemark').length){[...d.getElementsByTagName('Placemark')].forEach(pm=>{const name=(pm.getElementsByTagName('name')[0]||{}).textContent||'Placemark';
+        const pt=pm.getElementsByTagName('Point')[0],ls=pm.getElementsByTagName('LineString')[0],pg=pm.getElementsByTagName('Polygon')[0];
+        const parse=el=>el.getElementsByTagName('coordinates')[0].textContent.trim().split(/\s+/).map(s=>{const c=s.split(',');return[+c[1],+c[0]]});
+        if(pt){addItem({kind:'wpt',type:'pin',name,notes:'',pts:parse(pt).slice(0,1)});n++}else if(ls){addItem({kind:'line',name,notes:'',pts:parse(ls)});n++}else if(pg){const r=parse(pg);r.pop();addItem({kind:'area',name,notes:'',pts:r});n++}})}
+      else{[...d.getElementsByTagName('wpt')].forEach(w=>{addItem({kind:'wpt',type:'pin',name:(w.getElementsByTagName('name')[0]||{}).textContent||'Waypoint',notes:(w.getElementsByTagName('desc')[0]||{}).textContent||'',pts:[[+w.getAttribute('lat'),+w.getAttribute('lon')]]});n++});
+        [...d.getElementsByTagName('trk'),...d.getElementsByTagName('rte')].forEach(t=>{const pts=[...t.querySelectorAll('trkpt,rtept')].map(p=>[+p.getAttribute('lat'),+p.getAttribute('lon')]);if(pts.length>1){addItem({kind:'line',name:(t.getElementsByTagName('name')[0]||{}).textContent||'Track',notes:'',pts});n++}})}}
+    toast(`Imported ${n} item${n===1?'':'s'}`);
+  }catch(err){toast('Could not read that file')}
+  e.target.value='';
+};
+
+/* ---------- map clicks ---------- */
+map.on('click',e=>{
+  if(tool==='dist'||tool==='area'){mPts.push(e.latlng);redrawMeasure();return}
+  if(tool==='wpt'){openWpt(null,e.latlng);return}
+  identify(e.latlng);
+});
+map.on('dblclick',e=>{if(tool==='dist'||tool==='area'){L.DomEvent.stop(e)}});
+map.on('contextmenu',e=>{openWpt(null,e.latlng)});
+
+/* ---------- location ---------- */
+let watchId=null,myLL=null,meMarker=null,meCircle=null,follow=false;
+$('#btnLocate').addEventListener('click',()=>{
+  if(watchId!=null&&!follow){follow=true;$('#btnLocate').textContent='➤';if(myLL)map.setView(myLL,Math.max(map.getZoom(),15));return}
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;follow=false;$('#btnLocate').classList.remove('on');$('#btnLocate').textContent='◎';if(meMarker){map.removeLayer(meMarker);map.removeLayer(meCircle);meMarker=null}return}
+  if(!navigator.geolocation){toast('Location not available in this browser');return}
+  $('#btnLocate').classList.add('on');follow=true;$('#btnLocate').textContent='➤';let first=true;
+  watchId=navigator.geolocation.watchPosition(p=>{
+    myLL=L.latLng(p.coords.latitude,p.coords.longitude);
+    if(!meMarker){meCircle=L.circle(myLL,{radius:p.coords.accuracy,color:'#2f8cff',weight:1,fillOpacity:.1,interactive:false}).addTo(map);meMarker=L.marker(myLL,{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[18,18],iconAnchor:[12,12]}),interactive:false}).addTo(map)}
+    else{meMarker.setLatLng(myLL);meCircle.setLatLng(myLL).setRadius(p.coords.accuracy)}
+    if(first||follow)map.setView(myLL,first?Math.max(map.getZoom(),15):map.getZoom());first=false;
+  },err=>{toast('Location error: '+err.message,4000);$('#btnLocate').classList.remove('on');$('#btnLocate').textContent='◎';watchId=null},{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+});
+map.on('dragstart',()=>{if(follow){follow=false;$('#btnLocate').textContent='◎'}});
+$('#btnMarkHere').addEventListener('click',()=>{
+  if(myLL){openWpt(null,myLL);return}
+  if(!navigator.geolocation){toast('Location not available');return}
+  toast('Getting GPS fix…');
+  navigator.geolocation.getCurrentPosition(p=>{const ll=L.latLng(p.coords.latitude,p.coords.longitude);map.setView(ll,Math.max(map.getZoom(),16));openWpt(null,ll)},err=>toast('Location error: '+err.message,4000),{enableHighAccuracy:true,timeout:20000});
+});
+
+/* ---------- search ---------- */
+let sMode='place';
+$('#searchMode').onclick=()=>{sMode=sMode==='place'?'owner':'place';$('#searchMode').textContent=sMode==='place'?'Place':'Owner';$('#search').placeholder=sMode==='place'?'Search place, address, or lat, lon':'Landowner name (searches the visible map area)';$('#results').style.display='none';$('#search').focus()};
+const resEl=$('#results');
+function showResults(html){resEl.innerHTML=html;resEl.style.display=html?'block':'none'}
+let sTimer=null;
+$('#search').addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(sTimer);doSearch(true)}if(e.key==='Escape')showResults('')});
+$('#search').addEventListener('input',()=>{clearTimeout(sTimer);if(sMode==='place')sTimer=setTimeout(()=>doSearch(false),350)});
+document.addEventListener('click',e=>{if(!e.target.closest('#searchWrap'))showResults('')});
+async function doSearch(enter){
+  const q=$('#search').value.trim();if(!q){showResults('');return}
+  const m=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if(m){let a=+m[1],b=+m[2];if(a<0&&b>0)[a,b]=[b,a];const ll=L.latLng(a,b);map.setView(ll,16);showResults('');if(enter)openWpt(null,ll);return}
+  if(sMode==='owner')return ownerSearch(q);
+  try{
+    const j=await rest(SVC.geocode+'/suggest',{text:q,location:`${map.getCenter().lng},${map.getCenter().lat}`,searchExtent:JSON.stringify({xmin:-97.3,ymin:43.4,xmax:-89.4,ymax:49.4,spatialReference:{wkid:4326}}),maxSuggestions:6,countryCode:'USA'});
+    const s=j.suggestions||[];
+    showResults(s.length?s.map(x=>`<div data-mk="${esc(x.magicKey)}" data-t="${esc(x.text)}">${esc(x.text)}</div>`).join(''):'<div class="sub" style="padding:10px">No matches</div>');
+    if(enter&&s[0])pickSuggestion(s[0].text,s[0].magicKey);
+  }catch(e){showResults('<div class="sub" style="padding:10px">Search unavailable</div>')}
+}
+async function pickSuggestion(text,mk){
+  showResults('');$('#search').value=text;
+  try{const j=await rest(SVC.geocode+'/findAddressCandidates',{SingleLine:text,magicKey:mk,outSR:4326,maxLocations:1,outFields:'Addr_type'});const c=j.candidates&&j.candidates[0];if(!c)return toast('Not found');
+    if(c.extent&&/Locality|Postal|Zone|Admin|Region/i.test(c.attributes.Addr_type||''))map.fitBounds([[c.extent.ymin,c.extent.xmin],[c.extent.ymax,c.extent.xmax]]);else map.setView([c.location.y,c.location.x],16);
+  }catch(e){toast('Search failed')}
+}
+resEl.addEventListener('click',e=>{const d=e.target.closest('div[data-mk],div[data-pid]');if(!d)return;
+  if(d.dataset.mk)pickSuggestion(d.dataset.t,d.dataset.mk);
+  else{const f=ownerHits[+d.dataset.pid];showResults('');clearHL();hl.addData(f);map.fitBounds(hl.getBounds(),{maxZoom:17,padding:[40,40]});const c=hl.getBounds().getCenter();setTimeout(()=>identify(c),400)}});
+let ownerHits=[];
+async function ownerSearch(q){
+  if(map.getZoom()<10){showResults('<div class="sub" style="padding:10px">Zoom in to a county or township first – owner search looks within the visible map.</div>');return}
+  showResults('<div class="sub" style="padding:10px"><span class="spin"></span> Searching…</div>');
+  const b=map.getBounds();const safe=q.toUpperCase().replace(/'/g,"''").replace(/[%_]/g,'');
+  try{
+    const j=await rest(SVC.dnrParcels+'/1/query',{where:`UPPER(owner_name) LIKE '%${safe}%' OR UPPER(tax_name) LIKE '%${safe}%'`,geometry:`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:'owner_name,tax_name',returnGeometry:true,outSR:4326,resultRecordCount:50,f:'geojson'});
+    ownerHits=j.features||[];
+    if(!ownerHits.length){showResults('<div class="sub" style="padding:10px">No owners matching that name in view (some counties don\'t publish names).</div>');return}
+    showResults(ownerHits.map((f,i)=>`<div data-pid="${i}">${esc(f.properties.owner_name||f.properties.tax_name)}<small>${featureAcres(f).toFixed(1)} acres</small></div>`).join(''));
+  }catch(e){showResults('<div class="sub" style="padding:10px">Owner search failed – try a smaller area.</div>')}
+}
+
+/* ---------- weather / sun / moon ---------- */
+const WX={0:['☀️','Clear'],1:['🌤️','Mostly clear'],2:['⛅','Partly cloudy'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Freezing fog'],51:['🌦️','Light drizzle'],53:['🌦️','Drizzle'],55:['🌧️','Heavy drizzle'],56:['🌧️','Freezing drizzle'],57:['🌧️','Freezing drizzle'],61:['🌦️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],66:['🌧️','Freezing rain'],67:['🌧️','Freezing rain'],71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],77:['🌨️','Snow grains'],80:['🌦️','Rain showers'],81:['🌧️','Rain showers'],82:['⛈️','Heavy showers'],85:['🌨️','Snow showers'],86:['❄️','Heavy snow showers'],95:['⛈️','Thunderstorm'],96:['⛈️','T-storm & hail'],99:['⛈️','T-storm & hail']};
+const wxc=c=>WX[c]||['🌡️','—'];
+const card16=d=>['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(((d%360)+360)%360/22.5)%16];
+// arrow points the way the wind is blowing TO (where your scent goes)
+const windArrow=(deg,size)=>`<span class="arr" style="display:inline-block;transform:rotate(${(deg+180)%360}deg);font-size:${size||16}px">↑</span>`;
+const tfmt=d=>d&&!isNaN(d)?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—';
+const addMin=(d,m)=>new Date(d.getTime()+m*60000);
+function moonInfo(date){
+  const il=SunCalc.getMoonIllumination(date);const p=il.phase;
+  const names=[[0.0175,'New Moon','🌑'],[0.2325,'Waxing Crescent','🌒'],[0.2675,'First Quarter','🌓'],[0.4825,'Waxing Gibbous','🌔'],[0.5175,'Full Moon','🌕'],[0.7325,'Waning Gibbous','🌖'],[0.7675,'Last Quarter','🌗'],[0.9825,'Waning Crescent','🌘'],[1.01,'New Moon','🌑']];
+  const n=names.find(x=>p<x[0]);return{name:n[1],icon:n[2],illum:Math.round(il.fraction*100),phase:p};
+}
+function nextPhase(date,target){ // find next date when phase crosses target (0=new,0.5=full)
+  for(let h=1;h<24*31;h++){const d=new Date(date.getTime()+h*3600000);const a=SunCalc.getMoonIllumination(new Date(d.getTime()-3600000)).phase,b=SunCalc.getMoonIllumination(d).phase;
+    if(target===0?(a>0.9&&b<0.1):(a<0.5&&b>=0.5))return d}return null}
+let wxData=null,wxAt=null,wxLL=null,wxBusy=false;
+function wxPoint(){return myLL&&watchId!=null?myLL:map.getCenter()}
+async function loadWx(force){
+  const ll=wxPoint();
+  if(!force&&wxData&&wxLL&&wxLL.distanceTo(ll)<8000&&Date.now()-wxAt<15*60000)return;
+  if(wxBusy)return;wxBusy=true;
+  try{
+    const u='https://api.open-meteo.com/v1/forecast?latitude='+ll.lat.toFixed(3)+'&longitude='+ll.lng.toFixed(3)+
+      '&current=temperature_2m,apparent_temperature,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,relative_humidity_2m,pressure_msl,precipitation'+
+      '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability,weather_code,pressure_msl'+
+      '&daily=temperature_2m_max,temperature_2m_min,weather_code,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,precipitation_probability_max'+
+      '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7';
+    const r=await fetch(u);const j=await r.json();if(j.error)throw new Error(j.reason);
+    wxData=j;wxAt=Date.now();wxLL=ll;
+  }catch(e){if(!wxData){$('#wxChip').textContent='🌡️ n/a'}}
+  finally{wxBusy=false}
+  renderWxChip();if($('#wxPanel').classList.contains('show'))renderWx();
+}
+function renderWxChip(){
+  if(!wxData)return;const c=wxData.current;
+  $('#wxChip').innerHTML=`${wxc(c.weather_code)[0]} ${Math.round(c.temperature_2m)}° <span style="color:var(--mut);font-weight:500">${windArrow(c.wind_direction_10m)} ${Math.round(c.wind_speed_10m)}</span>`;
+}
+function renderWx(){
+  const ll=wxLL||wxPoint();
+  const now=new Date();
+  const st=SunCalc.getTimes(now,ll.lat,ll.lng),stT=SunCalc.getTimes(addMin(now,1440),ll.lat,ll.lng);
+  const mt=SunCalc.getMoonTimes(now,ll.lat,ll.lng),mo=moonInfo(now);
+  const nf=nextPhase(now,0.5),nn=nextPhase(now,0);
+  const shootStart=addMin(st.sunrise,-30),shootEnd=addMin(st.sunset,30);
+  let h='';
+  h+=`<div class="sub">${watchId!=null&&myLL?'At your location':'At map center'} · ${fmtLL(ll)}</div>`;
+  if(wxData){
+    const c=wxData.current,[ic,tx]=wxc(c.weather_code);
+    // pressure trend over last 3h
+    const idx=Math.max(0,wxData.hourly.time.findIndex(t=>t>=c.time.slice(0,13)+':00'));
+    const pNow=wxData.hourly.pressure_msl[idx],pPrev=wxData.hourly.pressure_msl[Math.max(0,idx-3)];
+    const dp=pNow-pPrev,trend=dp>0.6?'rising ↗':dp<-0.6?'falling ↘':'steady →';
+    h+=`<div class="wxNow" style="margin-top:8px"><div style="font-size:40px">${ic}</div><div><div class="t">${Math.round(c.temperature_2m)}°F</div><div class="sub">${tx} · feels ${Math.round(c.apparent_temperature)}°</div></div></div>`;
+    h+=`<div class="wxGrid">
+      <div class="wxCard" style="grid-column:1/3"><div class="k">Wind</div><div class="windBig"><div class="dial"><b style="left:24px;top:1px">N</b><b style="right:3px;top:21px">E</b><b style="left:25px;bottom:1px">S</b><b style="left:3px;top:21px">W</b><div class="ar"><span style="transform:rotate(${(c.wind_direction_10m+180)%360}deg)">↑</span></div></div>
+        <div><div class="v">${Math.round(c.wind_speed_10m)} mph from ${card16(c.wind_direction_10m)} (${Math.round(c.wind_direction_10m)}°)</div><div class="s">Gusts ${Math.round(c.wind_gusts_10m)} mph · arrow shows where your scent drifts</div></div></div></div>
+      <div class="wxCard"><div class="k">Humidity</div><div class="v">${c.relative_humidity_2m}%</div></div>
+      <div class="wxCard"><div class="k">Pressure</div><div class="v">${(c.pressure_msl*0.02953).toFixed(2)} inHg</div><div class="s">${trend}</div></div>
+    </div>`;
+  }else h+='<div class="note">Weather unavailable right now (needs internet). Sun and moon times below still work.</div>';
+  h+=`<h4>Sun &amp; shooting hours (today)</h4><div class="wxGrid">
+    <div class="wxCard"><div class="k">Sunrise</div><div class="v">🌅 ${tfmt(st.sunrise)}</div><div class="s">Tomorrow ${tfmt(stT.sunrise)}</div></div>
+    <div class="wxCard"><div class="k">Sunset</div><div class="v">🌇 ${tfmt(st.sunset)}</div><div class="s">Tomorrow ${tfmt(stT.sunset)}</div></div>
+    <div class="wxCard" style="grid-column:1/3"><div class="k">Legal shooting hours* (deer &amp; small game)</div><div class="v">${tfmt(shootStart)} – ${tfmt(shootEnd)}</div><div class="s">Tomorrow ${tfmt(addMin(stT.sunrise,-30))} – ${tfmt(addMin(stT.sunset,30))} · waterfowl ends at sunset (${tfmt(st.sunset)}) for most of season</div></div>
+  </div>`;
+  h+=`<h4>Moon</h4><div class="wxGrid">
+    <div class="wxCard"><div class="k">Phase</div><div class="v">${mo.icon} ${mo.name}</div><div class="s">${mo.illum}% illuminated</div></div>
+    <div class="wxCard"><div class="k">Moonrise / set</div><div class="v">${mt.alwaysUp?'Up all day':mt.alwaysDown?'Down all day':`↑ ${tfmt(mt.rise)}`}</div><div class="s">${mt.set?'↓ '+tfmt(mt.set):''}</div></div>
+    <div class="wxCard" style="grid-column:1/3"><div class="s">Next full moon ${nf?nf.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'}):'—'} · next new moon ${nn?nn.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'}):'—'}</div></div>
+  </div>`;
+  if(wxData){
+    const H=wxData.hourly,c=wxData.current;
+    const start=Math.max(0,H.time.findIndex(t=>t>=c.time.slice(0,13)+':00'));
+    const srH=st.sunrise.getHours(),ssH=st.sunset.getHours();
+    h+=`<h4>Next 24 hours</h4><div class="hours">`+H.time.slice(start,start+24).map((t,k)=>{const i=start+k;const hr=+t.slice(11,13);
+      const lbl=hr===0?'12a':hr<12?hr+'a':hr===12?'12p':(hr-12)+'p';
+      return `<div class="h ${hr===srH||hr===ssH?'dawn':''}" title="${hr===srH?'Sunrise hour':hr===ssH?'Sunset hour':''}">${lbl}<b>${Math.round(H.temperature_2m[i])}°</b>${(H.weather_code[i]<=1&&(hr<srH||hr>ssH))?'🌙':wxc(H.weather_code[i])[0]}<br>${windArrow(H.wind_direction_10m[i],13)} ${Math.round(H.wind_speed_10m[i])}<br><span style="color:var(--mut)">${card16(H.wind_direction_10m[i])}</span>${H.precipitation_probability[i]>=20?`<br><span style="color:#7fd3ff">${H.precipitation_probability[i]}%💧</span>`:''}</div>`}).join('')+`</div>`;
+    const D=wxData.daily;
+    h+=`<h4>7-day</h4><div class="days">`+D.time.map((t,i)=>{const d=new Date(t+'T12:00');const sd=SunCalc.getTimes(d,ll.lat,ll.lng);const m=moonInfo(d);
+      return `<div class="d"><b>${i===0?'Today':d.toLocaleDateString([],{weekday:'short'})}</b><span>${wxc(D.weather_code[i])[0]}</span><span>${Math.round(D.temperature_2m_max[i])}° / <small>${Math.round(D.temperature_2m_min[i])}°</small>${D.precipitation_probability_max[i]>=20?` <small style="color:#7fd3ff">${D.precipitation_probability_max[i]}%</small>`:''}</span><span>${windArrow(D.wind_direction_10m_dominant[i],13)} ${card16(D.wind_direction_10m_dominant[i])} ${Math.round(D.wind_speed_10m_max[i])}</span><small>${tfmt(sd.sunrise).replace(/\s?[AP]M/i,'')}–${tfmt(sd.sunset).replace(/\s?[AP]M/i,'')} ${m.icon}</small></div>`}).join('')+`</div>`;
+    h+=`<div class="note">Weather: Open-Meteo forecast (NWS/NOAA models), updated ${new Date(wxAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}. <a href="#" id="wxRefresh">Refresh</a></div>`;
+  }
+  h+=`<div class="note">*Minnesota general rule: ½ hour before sunrise to ½ hour after sunset. Some seasons differ (waterfowl opener, turkey, etc.) – check the current DNR regulations.</div>`;
+  $('#wxBody').innerHTML=h;
+  const rf=$('#wxRefresh');if(rf)rf.onclick=e=>{e.preventDefault();loadWx(true)};
+}
+$('#wxChip').addEventListener('click',()=>{
+  const on=!$('#wxPanel').classList.contains('show');
+  ['layersPanel','listPanel'].forEach(id=>showPanel(id,false));
+  showPanel('wxPanel',on);if(on){renderWx();loadWx(false)}
+});
+map.on('moveend',()=>{clearTimeout(loadWx._t);loadWx._t=setTimeout(()=>loadWx(false),1500)});
+setInterval(()=>loadWx(true),15*60000);
+setTimeout(()=>loadWx(true),300);
+
+/* ---------- coverage note ---------- */
+function showCoverage(){
+  showPanel('layersPanel',false);
+  $('#infoTitle').textContent='Parcel data coverage';
+  $('#infoBody').innerHTML=`<div class="note">Property lines are drawn statewide from the MN DNR parcel compilation. Owner names and tax details depend on what each county shares.</div>
+  <h4>Full detail (owner, mailing address, values, legal)</h4><div class="note">60 counties in MnGeo's open parcel dataset, e.g. Aitkin, Anoka, Becker, Carlton, Cass, Cook, Crow Wing, Douglas, Hennepin, Itasca, Koochiching, Lake, Lake of the Woods, Morrison, Otter Tail, St. Louis, Wright and more.</div>
+  <h4>Lines + owner name only</h4><div class="note">Counties not in the open set where DNR still has owner names, e.g. Beltrami, Blue Earth, Cottonwood, Faribault, Freeborn, Hubbard, Kanabec, Kittson, Lincoln, Martin, Meeker, Nicollet, Pine, Rock, Swift, Todd.</div>
+  <h4>Lines only, no owner names</h4><div class="note">Brown, Fillmore, Goodhue, Houston, Kandiyohi, Le Sueur, Norman, Redwood, Rice, Roseau, Stearns, Wadena, Waseca, Watonwan; patchy in Mahnomen, Nobles and Sibley. Use the county's own GIS/property search for owners there.</div>`;
+  showPanel('infoPanel');
+}
+
+/* ---------- init ---------- */
+setBase(curBase);buildParcels();syncPub();drawItems();setView(view);
+if(!store.get('seenIntro',false)){store.set('seenIntro',true);setTimeout(()=>toast('Zoom in to see property lines · tap a parcel for the owner',4500),800)}
+window.__nhm={map,setTool,identify};
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(()=>{});
+window.addEventListener('offline',()=>toast('Offline – showing saved map areas & waypoints',4000));
+window.addEventListener('online',()=>toast('Back online'));
+})();
+</script>
+</body>
+</html>
