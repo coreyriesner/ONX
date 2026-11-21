@@ -298,23 +298,23 @@ map.createPane('units');map.getPane('units').style.zIndex=380;
 map.createPane('parcels');map.getPane('parcels').style.zIndex=420;
 map.createPane('hl');map.getPane('hl').style.zIndex=440;
 map.createPane('labels');map.getPane('labels').style.zIndex=430;map.getPane('labels').style.pointerEvents='none';
-map.createPane('hill');map.getPane('hill').style.zIndex=210;map.getPane('hill').style.mixBlendMode='multiply';
+map.createPane('hill');map.getPane('hill').style.zIndex=210;
 
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/';
 const BASEMAPS={
-  hybrid:{name:'Satellite',mk:()=>L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'})},
-  usgsimg:{name:'Sat + Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
-  topo:{name:'USGS Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
-  otm:{name:'OpenTopo',mk:()=>L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:17,subdomains:'abc',attribution:'© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors'})},
-  esritopo:{name:'Esri Topo',mk:()=>L.tileLayer(ESRI+'World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,attribution:'© Esri'})},
-  streets:{name:'Streets',mk:()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:19,attribution:'© OpenStreetMap contributors'})}
+  hybrid:{name:'Satellite',mk:()=>L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'})},
+  usgsimg:{name:'Sat + Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
+  topo:{name:'USGS Topo',mk:()=>L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,attribution:'USGS The National Map'})},
+  otm:{name:'OpenTopo',mk:()=>L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{crossOrigin:true,maxZoom:20,maxNativeZoom:17,subdomains:'abc',attribution:'© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors'})},
+  esritopo:{name:'Esri Topo',mk:()=>L.tileLayer(ESRI+'World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'© Esri'})},
+  streets:{name:'Streets',mk:()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,attribution:'© OpenStreetMap contributors'})}
 };
 let baseLayer=null,curBase=store.get('base','hybrid');
 const labelLayers=L.layerGroup([
-  L.tileLayer(ESRI+'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,pane:'labels',opacity:.85}),
-  L.tileLayer(ESRI+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,pane:'labels'})
+  L.tileLayer(ESRI+'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,pane:'labels',opacity:.85}),
+  L.tileLayer(ESRI+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:19,pane:'labels'})
 ]);
-const hillLayer=L.tileLayer(ESRI+'Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:16,pane:'hill',opacity:.55,attribution:'Hillshade © Esri'});
+const hillLayer=L.tileLayer(ESRI+'Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',{crossOrigin:true,maxZoom:20,maxNativeZoom:16,pane:'hill',opacity:.55,attribution:'Hillshade © Esri'});
 function setBase(k){
   if(!BASEMAPS[k])k='hybrid';
   if(baseLayer)map.removeLayer(baseLayer);
@@ -326,7 +326,7 @@ function setBase(k){
 $('#bmGrid').innerHTML=Object.entries(BASEMAPS).map(([k,v])=>`<button data-k="${k}">${v.name}</button>`).join('');
 $('#bmGrid').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setBase(b.dataset.k)});
 $('#ovLabels').addEventListener('change',()=>setBase(curBase));
-$('#ovHill').addEventListener('change',e=>e.target.checked?hillLayer.addTo(map):map.removeLayer(hillLayer));
+$('#ovHill').addEventListener('change',e=>{map.getPane('hill').style.mixBlendMode=e.target.checked?'multiply':'';e.target.checked?hillLayer.addTo(map):map.removeLayer(hillLayer)});
 
 /* ---------- dynamic (server-drawn) layers ---------- */
 const rgb=h=>{h=h.replace('#','');return[parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)]};
@@ -335,7 +335,7 @@ const labelInfo=(expr,color,size,minScale)=>[{labelExpressionInfo:{expression:ex
 function dyn(url,layerId,symbol,opts){
   opts=opts||{};
   const dl=[{id:layerId,source:{type:'mapLayer',mapLayerId:layerId},definitionExpression:opts.where||'',drawingInfo:{renderer:{type:'simple',symbol},showLabels:!!opts.labels,labelingInfo:opts.labels||null}}];
-  return L.esri.dynamicMapLayer({url,f:'image',format:'png32',transparent:true,pane:opts.pane||'public',dynamicLayers:JSON.stringify(dl),opacity:opts.opacity==null?1:opts.opacity,attribution:opts.attr||'MN DNR'});
+  return L.esri.dynamicMapLayer({url,f:'image',updateInterval:400,format:'png32',transparent:true,pane:opts.pane||'public',dynamicLayers:JSON.stringify(dl),opacity:opts.opacity==null?1:opts.opacity,attribution:opts.attr||'MN DNR'});
 }
 
 /* Parcels */
@@ -378,7 +378,7 @@ let pubOpacity=+store.get('pubOp',0.8);$('#pubOpacity').value=pubOpacity;
 const lyr={};
 function mkLayer(d){
   if(d.fws){
-    return L.esri.featureLayer({url:SVC.fws,pane:d.pane||'public',minZoom:d.minZoom||0,simplifyFactor:0.5,precision:6,attribution:'USFWS',where:"FWSREGION = '3' AND INTTYPE1 <> 'E' AND (RSL_TYPE IS NULL OR RSL_TYPE <> 'Approved')",fields:['OBJECTID','ORGNAME','UNITNAME','INTTYPE1','RSL_TYPE'],
+    return L.esri.featureLayer({url:SVC.fws,pane:d.pane||'public',renderer:L.canvas({pane:d.pane||'public',padding:0.3}),minZoom:d.minZoom||0,simplifyFactor:0.5,precision:6,attribution:'USFWS',where:"FWSREGION = '3' AND INTTYPE1 <> 'E' AND (RSL_TYPE IS NULL OR RSL_TYPE <> 'Approved')",fields:['OBJECTID','ORGNAME','UNITNAME','INTTYPE1','RSL_TYPE'],
       style:()=>({color:'#2f8cff',weight:1.6,fillColor:'#2f8cff',fillOpacity:.45*pubOpacity,opacity:pubOpacity,interactive:false})});
   }
   return dyn(d.url,d.lid,d.sym(),{pane:d.pane||'public',where:d.where,labels:d.labels&&d.labels(),opacity:pubOpacity,attr:d.attr});
@@ -810,7 +810,7 @@ async function loadWx(force){
       '&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation_probability,weather_code,pressure_msl'+
       '&daily=temperature_2m_max,temperature_2m_min,weather_code,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,precipitation_probability_max'+
       '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7';
-    const r=await fetch(u);const j=await r.json();if(j.error)throw new Error(j.reason);
+    const r=await fetch(u);const j=await r.json();if(j.error||!j.current||!j.hourly)throw new Error(j.reason||'bad weather data');
     wxData=j;wxAt=Date.now();wxLL=ll;
   }catch(e){if(!wxData){$('#wxChip').textContent='🌡️ n/a'}}
   finally{wxBusy=false}
