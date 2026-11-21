@@ -481,8 +481,8 @@ async function identify(ll){
   $('#infoBody').innerHTML='<div class="sub"><span class="spin"></span> Looking up this spot…</div>';
   showPanel('infoPanel');clearHL();
   const tasks={
-    parcel: map.getZoom()>=11? rest(SVC.dnrParcels+'/1/query',ptQuery(ll,{returnGeometry:true,outSR:4326,f:'geojson'})):Promise.resolve(null),
-    open: map.getZoom()>=11? rest(SVC.openParcels+'/query',ptQuery(ll)):Promise.resolve(null),
+    parcel: map.getZoom()>=11? rest(SVC.dnrParcels+'/1/query',ptQuery(ll,{outFields:'objectid,owner_name,tax_name'})):Promise.resolve(null),
+    open: map.getZoom()>=11? rest(SVC.openParcels+'/query',ptQuery(ll,{returnGeometry:true,outSR:4326,f:'geojson'})):Promise.resolve(null),
     wma: rest(SVC.wma+'/0/query',ptQuery(ll,{outFields:'unit_name,name,deer,bear,small_game,waterfowl,pheasants,turkey,forest_upland_birds,special_restrictions,gis_area_acres,nearest_town'})),
     state: rest(SVC.stateLand+'/0/query',ptQuery(ll,{outFields:'administrator,mgtprgname,mgtprjname,landtype'})),
     sf: rest(SVC.stateForest+'/0/query',ptQuery(ll,{outFields:'name'})),
@@ -509,15 +509,19 @@ async function identify(ll){
   feats('dpa').forEach(f=>tags.push(['Deer Permit Area '+f.attributes.dpa,'#ff4d4d']));
   const isPublic=feats('wma').length||feats('state').length||feats('gov').some(f=>f.attributes.govt_own!=='Tribal')||feats('usfs').some(f=>/FOREST SERVICE/i.test(f.attributes.ownerclassification||''))||feats('fws').some(f=>f.attributes.RSL_TYPE!=='Approved');
   // parcel
-  const pf=feats('parcel')[0];
-  const oa=(feats('open')[0]||{}).attributes;
-  if(pf){
-    hl.addData(pf);lastParcel=pf;
-    const owner=(oa&&(oa.owner_name||oa.tax_name))||pf.properties.owner_name||pf.properties.tax_name;
-    const acresCalc=featureAcres(pf);
+  const df=feats('parcel')[0];           // DNR statewide (owner only, no geometry served)
+  const of=feats('open')[0];             // MnGeo open county parcel (geometry + tax roll)
+  const oa=of&&of.properties;
+  const pf=(of&&of.geometry)?of:null;
+  if(df||of){
+    const da=(df&&df.attributes)||{};
+    if(pf){hl.addData(pf);lastParcel=pf}
+    else if(da.objectid){rest(SVC.dnrParcels+'/1/query',{objectIds:da.objectid,returnExtentOnly:true,outSR:4326}).then(j=>{const e=j.extent;if(e&&e.xmin)L.rectangle([[e.ymin,e.xmin],[e.ymax,e.xmax]],{pane:'hl',color:'#00e5ff',weight:2,dashArray:'6 4',fill:false,interactive:false}).addTo(hl)}).catch(()=>{})}
+    const owner=(oa&&(oa.owner_name||oa.tax_name))||da.owner_name||da.tax_name;
+    const acresCalc=pf?featureAcres(pf):0;
     html+=`<div class="owner">${owner?esc(owner):'<span class="sub">Owner not published for this county</span>'}</div>`;
     if(oa&&oa.owner_more)html+=`<div class="sub">${esc(oa.owner_more)}</div>`;
-    html+=`<div class="sub" style="margin-bottom:8px">${isPublic?'<b style="color:#4caf50">Public land</b> · ':''}${acresCalc.toFixed(2)} acres (mapped)</div>`;
+    html+=`<div class="sub" style="margin-bottom:8px">${isPublic?'<b style="color:#4caf50">Public land</b> · ':''}${pf?acresCalc.toFixed(2)+' acres (mapped)':(oa&&oa.acres_deed?oa.acres_deed+' deeded acres':'Exact outline not published for this county')}</div>`;
     if(oa){
       const addr=[oa.anumber,oa.st_pre_dir,oa.st_name,oa.st_pos_typ,oa.st_pos_dir].filter(Boolean).join(' ');
       const mail=[oa.own_add_l1,oa.own_add_l2,oa.own_add_l3,oa.own_add_l4].filter(Boolean).join(', ')||[oa.tax_add_l1,oa.tax_add_l2,oa.tax_add_l3].filter(Boolean).join(', ');
@@ -526,7 +530,7 @@ async function identify(ll){
     }else{
       html+=`<div class="note">Detailed tax-roll info isn't in the open statewide set for this county. Check the county assessor/GIS site for more.</div>`;
     }
-    html+=`<div class="btns"><button class="btn pri" id="pMeasure">Measure this parcel</button><button class="btn" id="pSave">Save outline</button></div>`;
+    if(pf)html+=`<div class="btns"><button class="btn pri" id="pMeasure">Measure this parcel</button><button class="btn" id="pSave">Save outline</button></div>`;
   }else if(map.getZoom()<11){
     html+='<div class="note">Zoom in closer to look up property owners.</div>';
   }else{
@@ -761,17 +765,20 @@ async function pickSuggestion(text,mk){
 }
 resEl.addEventListener('click',e=>{const d=e.target.closest('div[data-mk],div[data-pid]');if(!d)return;
   if(d.dataset.mk)pickSuggestion(d.dataset.t,d.dataset.mk);
-  else{const f=ownerHits[+d.dataset.pid];showResults('');clearHL();hl.addData(f);map.fitBounds(hl.getBounds(),{maxZoom:17,padding:[40,40]});const c=hl.getBounds().getCenter();setTimeout(()=>identify(c),400)}});
+  else{const f=ownerHits[+d.dataset.pid];showResults('');clearHL();
+    rest(SVC.dnrParcels+'/1/query',{objectIds:f.properties.objectid,returnExtentOnly:true,outSR:4326}).then(j=>{const e=j.extent;if(!e||!e.xmin)return toast('Could not locate that parcel');
+      const bb=L.latLngBounds([[e.ymin,e.xmin],[e.ymax,e.xmax]]);map.fitBounds(bb,{maxZoom:17,padding:[40,40]});setTimeout(()=>identify(bb.getCenter()),500)}).catch(()=>toast('Could not locate that parcel'))}});
 let ownerHits=[];
 async function ownerSearch(q){
   if(map.getZoom()<10){showResults('<div class="sub" style="padding:10px">Zoom in to a county or township first – owner search looks within the visible map.</div>');return}
   showResults('<div class="sub" style="padding:10px"><span class="spin"></span> Searching…</div>');
   const b=map.getBounds();const safe=q.toUpperCase().replace(/'/g,"''").replace(/[%_]/g,'');
   try{
-    const j=await rest(SVC.dnrParcels+'/1/query',{where:`UPPER(owner_name) LIKE '%${safe}%' OR UPPER(tax_name) LIKE '%${safe}%'`,geometry:`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',outFields:'owner_name,tax_name',returnGeometry:true,outSR:4326,resultRecordCount:50,f:'geojson'});
-    ownerHits=j.features||[];
+    const env={where:`UPPER(owner_name) LIKE '%${safe}%' OR UPPER(tax_name) LIKE '%${safe}%'`,geometry:`${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`,geometryType:'esriGeometryEnvelope',inSR:4326,spatialRel:'esriSpatialRelIntersects',resultRecordCount:50};
+    const j=await rest(SVC.dnrParcels+'/1/query',Object.assign({outFields:'objectid,owner_name,tax_name'},env));
+    ownerHits=(j.features||[]).map(f=>({properties:f.attributes}));
     if(!ownerHits.length){showResults('<div class="sub" style="padding:10px">No owners matching that name in view (some counties don\'t publish names).</div>');return}
-    showResults(ownerHits.map((f,i)=>`<div data-pid="${i}">${esc(f.properties.owner_name||f.properties.tax_name)}<small>${featureAcres(f).toFixed(1)} acres</small></div>`).join(''));
+    showResults(ownerHits.map((f,i)=>`<div data-pid="${i}">${esc(f.properties.owner_name||f.properties.tax_name)}</div>`).join(''));
   }catch(e){showResults('<div class="sub" style="padding:10px">Owner search failed – try a smaller area.</div>')}
 }
 
