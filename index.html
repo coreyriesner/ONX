@@ -521,7 +521,7 @@ async function identify(ll){
     const acresCalc=pf?featureAcres(pf):0;
     html+=`<div class="owner">${owner?esc(owner):'<span class="sub">Owner not published for this county</span>'}</div>`;
     if(oa&&oa.owner_more)html+=`<div class="sub">${esc(oa.owner_more)}</div>`;
-    html+=`<div class="sub" style="margin-bottom:8px">${isPublic?'<b style="color:#4caf50">Public land</b> · ':''}${pf?acresCalc.toFixed(2)+' acres (mapped)':(oa&&oa.acres_deed?oa.acres_deed+' deeded acres':'Exact outline not published for this county')}</div>`;
+    html+=`<div class="sub" style="margin-bottom:8px">${isPublic?'<b style="color:#4caf50">Public land</b> · ':''}${pf?acresCalc.toFixed(2)+' acres (mapped)':(oa&&oa.acres_deed?oa.acres_deed+' deeded acres':'Acreage not published for this county – use Area to measure')}</div>`;
     if(oa){
       const addr=[oa.anumber,oa.st_pre_dir,oa.st_name,oa.st_pos_typ,oa.st_pos_dir].filter(Boolean).join(' ');
       const mail=[oa.own_add_l1,oa.own_add_l2,oa.own_add_l3,oa.own_add_l4].filter(Boolean).join(', ')||[oa.tax_add_l1,oa.tax_add_l2,oa.tax_add_l3].filter(Boolean).join(', ');
