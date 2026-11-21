@@ -647,7 +647,7 @@ async function identify(ll){
   feats('ndTrust').forEach(f=>tag('ND state trust land'+(f.attributes.PUBLIC_ACCESS?' · access: '+clean(f.attributes.PUBLIC_ACCESS):''),'#4d8dff',1));
   feats('sdGpa').forEach(f=>tag('GPA: '+clean(f.attributes.AreaName),'#ff7a00',1));
   feats('sdSchool').forEach(()=>tag('SD School & Public Lands','#4d8dff',1));
-  const AG={BLM:'BLM land',ST:'State trust land',BOR:'Bureau of Reclamation',LG:'Local government',DOD:'Military – restricted',NPS:'National Park Service',BIA:'Tribal / BIA – permission required',FS:null,FWS:null};
+  const AG={BLM:'BLM land',ST:'State trust land',BOR:'Bureau of Reclamation',LG:'Local government',DOD:'Military – restricted',NPS:'National Park Service',BIA:'Tribal / BIA – permission required',FS:null,FWS:null,PVT:null,UND:null,UNK:null};
   feats('blm').forEach(f=>{const c=f.attributes.ADMIN_AGENCY_CODE;const n=c in AG?AG[c]:c;if(n)tag(n+(f.attributes.ADMIN_UNIT_NAME?': '+clean(f.attributes.ADMIN_UNIT_NAME):''),BLM_COLORS[c]||'#ffd24a',/BLM|ST|BOR|LG/.test(c))});
   // parcel
   let owner='',sub='',rows=[],pf=null,noteHtml='',found=false;
