@@ -1,5 +1,5 @@
 // Northwoods Hunt Map service worker: offline app shell + cache of recently viewed map data.
-const V = 'v2';
+const V = 'v3';
 const SHELL = 'shell-' + V, TILES = 'tiles-' + V, DATA = 'data-' + V, IMGS = 'imgs-' + V;
 const SHELL_FILES = [
   './', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
